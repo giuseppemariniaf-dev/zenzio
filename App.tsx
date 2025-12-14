@@ -314,7 +314,6 @@ const ImagePickerModal = ({ isOpen, onClose, images, onSelect }: {
 };
 
 
-// FIX: Changed from a default export to a named export to resolve module resolution issues.
 export const App: React.FC = () => {
   const [view, setView] = useState<'home' | 'product_view' | 'thank_you_view' | 'admin' | 'preview'>('home');
   const [adminSection, setAdminSection] = useState<'pages' | 'settings'>('pages');
@@ -819,7 +818,7 @@ export const App: React.FC = () => {
   
       const pageLang = page.content.language || 'Italiano';
       const langConfig = getLanguageConfig(pageLang);
-      const completeUiTranslation = { ...(langConfig.ui || {}), ...(page.content.uiTranslation || {}) };
+      const completeUiTranslation = { ...(langConfig.ui || {}), ...(page.content.uiTranslation || {}) } as UiTranslation;
   
       const contentWithDefaults = {
           ...page.content,
@@ -1018,7 +1017,7 @@ export const App: React.FC = () => {
   if (view === 'product_view' && selectedPublicPage) {
       const pageLang = selectedPublicPage.content.language || 'Italiano';
       const langConfig = getLanguageConfig(pageLang);
-      const completeUiTranslation = { ...(langConfig.ui || {}), ...(selectedPublicPage.content.uiTranslation || {}) };
+      const completeUiTranslation = { ...(langConfig.ui || {}), ...(selectedPublicPage.content.uiTranslation || {}) } as UiTranslation;
       
       const contentWithDefaults = {
         ...selectedPublicPage.content,
@@ -1056,15 +1055,15 @@ export const App: React.FC = () => {
     // This is needed in case we must generate a default TY page.
     const completeLandingContent = {
         ...selectedPublicPage.content,
-        uiTranslation: { ...(langConfig.ui || {}), ...(selectedPublicPage.content.uiTranslation || {}) }
+        uiTranslation: { ...(langConfig.ui || {}), ...(selectedPublicPage.content.uiTranslation || {}) } as UiTranslation
     };
 
     // Use the thank_you_content if it exists, otherwise generate a default.
     // In either case, ensure its UI translations are complete.
-    const tyContentSource = selectedPublicPage.thank_you_content || createDefaultThankYouContent(completeLandingContent);
+    const tyContentSource = selectedPublicPage.thank_you_content || createDefaultThankYouContent(completeLandingContent as GeneratedContent);
     const tyContent = {
         ...tyContentSource,
-        uiTranslation: { ...(langConfig.ui || {}), ...(tyContentSource.uiTranslation || {}) }
+        uiTranslation: { ...(langConfig.ui || {}), ...(tyContentSource.uiTranslation || {}) } as UiTranslation
     };
       return ( <div className="relative"> <ThankYouPage content={tyContent} initialData={orderData} /> </div> )
   }
@@ -1593,9 +1592,26 @@ export const App: React.FC = () => {
         </div>
       </header>
       <main className="container mx-auto px-6 py-12">
-        <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="text-4xl md:text-6xl font-extrabold text-slate-900 mb-4 leading-tight">Le Migliori Offerte, <span className="text-emerald-500">Selezionate per Te</span></h2>
-            <p className="text-lg text-slate-600">Scopri prodotti unici e approfitta di sconti esclusivi. Pagamento sicuro alla consegna e spedizione rapida.</p>
+        <div className="text-center max-w-4xl mx-auto mb-16">
+            <div className="relative w-full aspect-video rounded-2xl overflow-hidden shadow-2xl mb-10 border border-slate-200 bg-black">
+                <video 
+                    className="w-full h-full object-cover"
+                    src="https://res.cloudinary.com/db1qkdntm/video/upload/v1765727527/site-businessman-working-with-virtual-reality-at-o-2025-12-09-06-42-01-utc_bnkst2.webm"
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                />
+            </div>
+            <h2 className="text-4xl md:text-6xl font-extrabold text-slate-900 mb-6 leading-tight">
+              Da Oltre 30 Anni <br className="hidden md:block" />
+              <span className="text-emerald-600">Leader nel Risparmio e Qualità</span>
+            </h2>
+            <p className="text-lg md:text-xl text-slate-600 leading-relaxed max-w-2xl mx-auto">
+              Non affidarti al caso. Scegli l'esperienza di chi seleziona per te solo il meglio da tre decenni. 
+              Prodotti esclusivi, <strong>pagamento sicuro alla consegna</strong> e la tranquillità di acquistare da veri professionisti. 
+              La tua soddisfazione è la nostra storia.
+            </p>
         </div>
         {isLoadingPages ? (
              <div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 animate-spin text-emerald-500"/></div>
