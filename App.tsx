@@ -366,7 +366,7 @@ export const App: React.FC = () => {
   const [previewMode, setPreviewMode] = useState<'landing' | 'thankyou'>('landing'); 
   const [stealthCount, setStealthCount] = useState(0);
   const [lastClickTime, setLastClickTime] = useState(0);
-  const [siteConfig, setSiteConfig] = useState<SiteConfig>({ siteName: 'BESTOFFERS', footerText: `© ${new Date().getFullYear()} Tutti i diritti riservati.` });
+  const [siteConfig, setSiteConfig] = useState<SiteConfig>({ siteName: 'ZenZio.EU', footerText: `© ${new Date().getFullYear()} Tutti i diritti riservati.` });
   
   // Duplication State
   const [duplicationTarget, setDuplicationTarget] = useState<LandingPageRow | null>(null);
