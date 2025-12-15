@@ -530,7 +530,8 @@ const OrderPopup: React.FC<{ isOpen: boolean; onClose: () => void; content: Gene
         return total.toFixed(2);
     };
 
-    const finalizeOrder = (method: 'cod' | 'card') => {
+    // Modified to be async to handle webhook reliability
+    const finalizeOrder = async (method: 'cod' | 'card') => {
         setIsLoading(true);
 
         if (onPurchase) {
@@ -557,9 +558,24 @@ const OrderPopup: React.FC<{ isOpen: boolean; onClose: () => void; content: Gene
         Object.entries(payloadData).forEach(([key, value]) => urlParams.append(key, String(value)));
 
         if (content.webhookUrl && content.webhookUrl.trim() !== '') {
-            // Fire-and-forget the webhook call, don't await it
-            fetch(content.webhookUrl, { method: 'POST', body: urlParams, mode: 'no-cors' })
-                .catch(err => console.error("Webhook send error (non-blocking):", err));
+            try {
+                // IMPORTANT: We use await and keepalive: true to ensure the request is sent
+                // even if the page unloads/redirects immediately after.
+                // We also race against a timeout so the user isn't stuck if the webhook is slow.
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Webhook Timeout')), 3000));
+                
+                await Promise.race([
+                    fetch(content.webhookUrl, { 
+                        method: 'POST', 
+                        body: urlParams, 
+                        mode: 'no-cors',
+                        keepalive: true // This is crucial for "fire and forget" reliability during navigation
+                    }),
+                    timeoutPromise
+                ]);
+            } catch (err) {
+                console.warn("Webhook send status unknown (likely sent via keepalive or timed out):", err);
+            }
         }
 
         trackEvent('Lead', { content_id: contentId }, { email: formData.email, phone: formData.phone });
