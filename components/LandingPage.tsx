@@ -834,9 +834,6 @@ export const ThankYouPage: React.FC<{ content: GeneratedContent; initialData?: O
                         <div className="absolute -top-3 -right-3 bg-blue-500 text-white p-1.5 rounded-full shadow-md"><Phone className="w-4 h-4" /></div>
                         <p className="text-slate-600 leading-relaxed font-medium text-lg">{finalMsg}</p>
                 </div>
-                <button onClick={() => window.location.href = '/'} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition flex items-center justify-center gap-2">
-                    <ShoppingBag className="w-5 h-5"/> {labels.backToShop}
-                </button>
             </div>
             {content.extraThankYouHtml && (<div className="w-full max-w-4xl mx-auto mt-8 relative z-0" dangerouslySetInnerHTML={{ __html: content.extraThankYouHtml }} />)}
             <p className="mt-8 text-slate-400 text-xs">© {new Date().getFullYear()}</p>
