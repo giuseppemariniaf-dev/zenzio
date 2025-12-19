@@ -1,5 +1,3 @@
-
-
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { ProductDetails, GeneratedContent, FormFieldConfig, Testimonial, UiTranslation } from "../types";
 
@@ -69,7 +67,7 @@ const LANGUAGE_DEFAULTS: Record<string, LanguageConfig> = {
         currency: '€', locale: 'it-IT', countryContext: 'Italy', verifiedRole: 'Acquisto Verificato', announcement: 'SPEDIZIONE GRATUITA + PAGAMENTO ALLA CONSEGNA', ctaSubtext: 'Garanzia Soddisfatti o Rimborsati',
         formLabels: { name: 'Nome e Cognome', phone: 'Telefono', address: 'Indirizzo e Civico', city: 'Città', cap: 'CAP', email: 'Email', notes: 'Note per il corriere' },
         ui: { ...COMMON_UI_DEFAULTS, shippingInsurance: "Assicurazione Spedizione VIP", gadgetLabel: "Aggiungi 2 Gadget Esclusivi", socialProof: "e altre 758 persone hanno acquistato", shippingInsuranceDescription: "Pacco protetto da furto e smarrimento.", gadgetDescription: "Aggiungi al tuo ordine.", freeLabel: "Gratis", reviews: 'Recensioni', offer: 'Offerta', onlyLeft: 'Solo {x} rimasti', secure: 'Sicuro', returns: 'Resi', original: 'Originale', express: 'Espresso', warranty: 'Garanzia', checkoutHeader: 'Cassa', paymentMethod: 'Metodo di Pagamento', cod: 'Pagamento alla Consegna', shippingInfo: 'Dati Spedizione', completeOrder: 'Completa Ordine', orderReceived: 'OK!', orderReceivedMsg: 'Ordine Ricevuto.', techDesign: 'Tecnologia & Design', discountLabel: '-50%', certified: 'Verificato', currencyPos: 'after', legalDisclaimer: getLegalTranslation('Italiano'), privacyPolicy: 'Privacy Policy', termsConditions: 'Termini e Condizioni', cookiePolicy: 'Cookie Policy', rightsReserved: 'Tutti i diritti riservati.', generatedPageNote: 'Questa è una pagina generata automaticamente a scopo illustrativo.',
-              thankYouTitle: "Grazie {name}!", thankYouMsg: "Il tuo ordine è stato ricevuto. Un nostro operatore ti contatterà a breve al numero {phone} per confermare l'ordine.", backToShop: "Torna allo Shopping",
+              thankYouTitle: "Grazie per il suo ordine!", thankYouMsg: "Il suo ordine è stato ricevuto. Un nostro operatore la contatterà a breve al numero che ha inserito nel formulario per confermare l'ordine.", backToShop: "Torna allo Shopping",
               summaryProduct: "Prodotto:", summaryShipping: "Spedizione:", summaryInsurance: "Assicurazione:", summaryGadget: "Gadget:", summaryTotal: "Totale:" }
     },
     'Inglese': { 

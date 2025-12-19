@@ -46,7 +46,8 @@ export interface Testimonial {
   role: string;
   rating?: number;
   date?: string; // Date of the review
-  image?: string; // NEW: Image for the review
+  image?: string; // Legacy: Single Image
+  images?: string[]; // NEW: Multiple images for gallery
 }
 
 export interface TypographyConfig {
@@ -109,6 +110,25 @@ export interface UiTranslation {
     summaryTotal: string;
 }
 
+export interface VideoItem {
+    id: string;
+    url: string; // External URL (mp4, cdn)
+    active: boolean;
+}
+
+export interface VideoSectionConfig {
+    enabled: boolean;
+    title: string;
+    videos: VideoItem[];
+}
+
+// NEW: Bottom CTA Section Config
+export interface BottomCtaConfig {
+    enabled: boolean;
+    headline: string;
+    subheadline: string;
+}
+
 export interface GeneratedContent {
   templateId?: TemplateId; 
   language?: string; 
@@ -150,6 +170,12 @@ export interface GeneratedContent {
       items: string[];
       image?: string; // Optional custom image for the box
   };
+
+  // NEW: Video Section (TikTok Style)
+  videoConfig?: VideoSectionConfig;
+
+  // NEW: Bottom CTA Section
+  bottomCtaConfig?: BottomCtaConfig;
 
   ctaText: string;
   ctaSubtext: string;

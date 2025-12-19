@@ -1,6 +1,8 @@
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { GeneratedContent, TemplateId, FormFieldConfig, TypographyConfig, Testimonial } from '../types';
-import { CheckCircle, Star, ShoppingCart, ArrowRight, ShieldCheck, Clock, Menu, User, CheckSquare, Truck, MessageCircle, X, Phone, MapPin, FileText, Loader2, Mail, Home, Image as ImageIcon, CreditCard, Banknote, ChevronDown, Zap, RefreshCcw, Check, Lock, Package, Eye, ThumbsUp, Flame, AlertTriangle, ShoppingBag, Bell, Maximize2, Gift } from 'lucide-react';
+import { CheckCircle, Star, ShoppingCart, ArrowRight, ShieldCheck, Clock, Menu, User, CheckSquare, Truck, MessageCircle, X, Phone, MapPin, FileText, Loader2, Mail, Home, Image as ImageIcon, CreditCard, Banknote, ChevronDown, Zap, RefreshCcw, Check, Lock, Package, Eye, ThumbsUp, Flame, AlertTriangle, ShoppingBag, Bell, Maximize2, Gift, Play, Award, Timer } from 'lucide-react';
 
 export interface OrderData {
     name?: string;
@@ -447,6 +449,122 @@ const DEFAULT_LABELS = {
     summaryGadget: "Gadget:",
     summaryTotal: "Total:",
 };
+
+// --- VIDEO SECTION COMPONENT ---
+const VideoGallery: React.FC<{ content: GeneratedContent }> = ({ content }) => {
+    const config = content.videoConfig;
+    
+    // Only render if enabled and has active videos
+    if (!config || !config.enabled || !config.videos || config.videos.length === 0) return null;
+    
+    const activeVideos = config.videos.filter(v => v.active);
+    if (activeVideos.length === 0) return null;
+
+    return (
+        <div className="bg-white rounded-none md:rounded-3xl p-6 md:p-12 md:shadow-xl md:border border-slate-100 mb-16 relative overflow-hidden border-t border-slate-100 md:border-t-0">
+             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-500 to-rose-500 md:h-2"></div>
+             {config.title && (
+                 <h3 className="text-center text-2xl md:text-3xl font-bold mb-8 text-slate-900 flex items-center justify-center gap-2">
+                     <Play className="w-6 h-6 text-pink-500 fill-pink-500" />
+                     {config.title}
+                 </h3>
+             )}
+             
+             {/* Container: Horizontal scroll on mobile (TikTok style), Grid on desktop */}
+             <div className="flex overflow-x-auto gap-4 md:grid md:grid-cols-3 lg:grid-cols-4 md:overflow-visible pb-4 md:pb-0 snap-x snap-mandatory">
+                 {activeVideos.map((video) => (
+                     <div key={video.id} className="flex-shrink-0 w-[260px] md:w-full snap-center bg-black rounded-2xl overflow-hidden shadow-lg border border-slate-200 aspect-[9/16] relative group">
+                        <video 
+                            src={video.url} 
+                            controls 
+                            playsInline 
+                            preload="metadata"
+                            className="w-full h-full object-cover"
+                        >
+                            Your browser does not support the video tag.
+                        </video>
+                     </div>
+                 ))}
+             </div>
+        </div>
+    );
+};
+
+// --- BOTTOM CTA SECTION COMPONENT ---
+const BottomCtaSection: React.FC<{ content: GeneratedContent, onBuy: () => void }> = ({ content, onBuy }) => {
+    const config = content.bottomCtaConfig;
+    const currency = content.currency || '€';
+    const labels = { ...DEFAULT_LABELS, ...(content.uiTranslation || {}) };
+
+    if (!config || config.enabled === false) return null;
+
+    return (
+        <div className="w-full bg-gradient-to-br from-teal-500 to-teal-800 text-white py-16 px-4 mb-20 relative overflow-hidden shadow-xl md:rounded-3xl md:mx-auto md:max-w-5xl">
+            {/* Background Pattern */}
+            <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+            
+            <div className="relative z-10 flex flex-col items-center text-center max-w-4xl mx-auto">
+                <h2 className="text-3xl md:text-5xl font-black mb-4 font-serif leading-tight text-white drop-shadow-sm">
+                    {config.headline || `Proteggi ${content.headline} Oggi`}
+                </h2>
+                <p className="text-teal-100 text-lg md:text-xl max-w-2xl mb-10 leading-relaxed font-light">
+                    {config.subheadline || "Non aspettare che sia troppo tardi. Investi nella qualità con uno sconto esclusivo."}
+                </p>
+
+                <div className="bg-white/10 backdrop-blur-md rounded-3xl p-8 md:p-12 w-full max-w-2xl border border-white/20 shadow-2xl relative overflow-hidden group hover:bg-white/15 transition-all duration-300">
+                    <div className="flex flex-col items-center">
+                        <div className="flex items-center gap-4 mb-6">
+                            <span className="text-6xl md:text-7xl font-black text-white tracking-tighter">
+                                {labels.currencyPos === 'before' ? `${currency}${content.price}` : `${content.price}${currency}`}
+                            </span>
+                            <div className="flex flex-col items-start opacity-70">
+                                <span className="text-2xl md:text-3xl line-through decoration-red-400 decoration-2 font-bold">
+                                    {labels.currencyPos === 'before' ? `${currency}${content.originalPrice}` : `${content.originalPrice}${currency}`}
+                                </span>
+                                <span className="text-sm font-medium uppercase tracking-widest">1 confezione</span>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-rose-200 text-sm font-bold uppercase tracking-widest mb-8 animate-pulse">
+                            <Timer className="w-4 h-4" /> Offerta valida solo per oggi
+                        </div>
+
+                        <button 
+                            onClick={onBuy}
+                            className="w-full md:w-auto bg-white text-teal-900 font-black text-lg md:text-xl py-4 px-10 rounded-xl shadow-xl hover:scale-105 active:scale-95 transition-all duration-300 hover:shadow-white/20"
+                        >
+                            {content.ctaText || "Ordina Ora"} con Sconto del 50%
+                        </button>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-12 w-full max-w-4xl px-4">
+                    <div className="flex flex-col items-center gap-2 text-center group">
+                        <div className="w-14 h-14 rounded-full bg-teal-600/50 flex items-center justify-center mb-1 group-hover:bg-teal-500/50 transition-colors">
+                            <Truck className="w-7 h-7 text-teal-100" />
+                        </div>
+                        <h4 className="font-bold text-lg font-serif">Spedizione Veloce</h4>
+                        <p className="text-sm text-teal-100/80">Consegna in 24/48 ore</p>
+                    </div>
+                    <div className="flex flex-col items-center gap-2 text-center group">
+                        <div className="w-14 h-14 rounded-full bg-teal-600/50 flex items-center justify-center mb-1 group-hover:bg-teal-500/50 transition-colors">
+                            <ShieldCheck className="w-7 h-7 text-teal-100" />
+                        </div>
+                        <h4 className="font-bold text-lg font-serif">Prova Senza Rischi</h4>
+                        <p className="text-sm text-teal-100/80">30 giorni soddisfatti o rimborsati</p>
+                    </div>
+                    <div className="flex flex-col items-center gap-2 text-center group">
+                        <div className="w-14 h-14 rounded-full bg-teal-600/50 flex items-center justify-center mb-1 group-hover:bg-teal-500/50 transition-colors">
+                            <Award className="w-7 h-7 text-teal-100" />
+                        </div>
+                        <h4 className="font-bold text-lg font-serif">Garanzia 12 Mesi</h4>
+                        <p className="text-sm text-teal-100/80">Copertura completa inclusa</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 // --- ORDER POPUP MODAL ---
 const OrderPopup: React.FC<{ isOpen: boolean; onClose: () => void; content: GeneratedContent; thankYouSlug?: string; onRedirect?: (data?: OrderData) => void; onPurchase?: (pageUrl: string) => void; }> = ({ isOpen, onClose, content, thankYouSlug, onRedirect, onPurchase }) => {
@@ -945,7 +1063,9 @@ const GadgetTemplate: React.FC<TemplateProps> = ({ content, onBuy, styles }) => 
                             </div>
                             <span className="text-[10px] text-slate-400 font-mono">{review.date}</span>
                         </div>
-                        {review.image && (
+                        
+                        {/* Legacy Single Image */}
+                        {!review.images && review.image && (
                              <div 
                                 className="mb-3 rounded-lg overflow-hidden h-56 w-full bg-slate-100 cursor-pointer relative group"
                                 onClick={() => setActiveReviewImage(review.image || null)}
@@ -958,6 +1078,30 @@ const GadgetTemplate: React.FC<TemplateProps> = ({ content, onBuy, styles }) => 
                                  </div>
                              </div>
                         )}
+
+                        {/* NEW: Multi-Image Gallery */}
+                        {review.images && review.images.length > 0 && (
+                            <div className="mb-3 grid grid-cols-2 gap-2">
+                                {review.images.slice(0, 4).map((img, idx) => (
+                                    <div 
+                                        key={idx}
+                                        className={`relative rounded-lg overflow-hidden bg-slate-100 cursor-pointer group h-24 w-full ${review.images!.length === 1 ? 'col-span-2 h-48' : ''}`}
+                                        onClick={() => setActiveReviewImage(img)}
+                                    >
+                                        <img src={img} alt={`Review ${idx}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"/>
+                                        {idx === 3 && review.images!.length > 4 && (
+                                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white font-bold text-lg">
+                                                +{review.images!.length - 4}
+                                            </div>
+                                        )}
+                                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                             <Maximize2 className="w-4 h-4 text-white drop-shadow-md" />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                         <h4 className="font-bold text-slate-900 text-base mb-2" style={h3Style}>{review.title || "Review"}</h4>
                         <p className="text-slate-600 italic mb-6 flex-grow leading-relaxed text-sm" style={bodyStyle}>"{review.text}"</p>
                         <div className="flex items-center gap-3 mt-auto border-t border-slate-200 pt-4">
@@ -1118,9 +1262,15 @@ const GadgetTemplate: React.FC<TemplateProps> = ({ content, onBuy, styles }) => 
                     
                     {/* Box Content inserted before Reviews */}
                     <BoxContentSection />
+                    
+                    {/* NEW: Video Section (Optional) - Placed before reviews */}
+                    <VideoGallery content={content} />
 
                     {/* Reviews inserted here if strictly inside text */}
                     {reviews.length > 0 && <ReviewsSection />}
+
+                    {/* NEW: Bottom CTA Section (Placed AFTER Reviews) */}
+                    <BottomCtaSection content={content} onBuy={onBuy} />
 
                     {/* Render remaining features */}
                     {featuresAfter.map((f, i) => (

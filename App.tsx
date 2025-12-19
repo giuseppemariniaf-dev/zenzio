@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase, isSupabaseConfigured, base64ToBlob } from './services/supabaseClient';
 import { generateLandingPage, generateReviews, generateActionImages, translateLandingPage, getLanguageConfig } from './services/geminiService';
 import LandingPage, { ThankYouPage } from './components/LandingPage';
-import { ProductDetails, GeneratedContent, PageTone, UserSession, LandingPageRow, TemplateId, FormFieldConfig, TypographyConfig, UiTranslation, SiteConfig, Testimonial } from './types';
-import { Loader2, LogOut, Sparkles, Star, ChevronLeft, ChevronRight, Save, ShoppingBag, ArrowRight, Trash2, Eye, UserPlus, LogIn, LayoutDashboard, Check, Image as ImageIcon, X, MonitorPlay, RefreshCcw, ArrowLeft, Settings, CreditCard, Link as LinkIcon, ListChecks, Pencil, Smartphone, Tablet, Monitor, Plus, MessageSquare, Images, Upload, Type, Truck, Flame, Zap, Globe, Banknote, MousePointerClick, Palette, Users, Copy, Target, MessageCircle, Code, Mail, Lock, Map, User, ArrowUp, ArrowDown, Package, ShieldCheck, FileText as FileTextIcon, Gift } from 'lucide-react';
+import { ProductDetails, GeneratedContent, PageTone, UserSession, LandingPageRow, TemplateId, FormFieldConfig, TypographyConfig, UiTranslation, SiteConfig, Testimonial, VideoItem } from './types';
+import { Loader2, LogOut, Sparkles, Star, ChevronLeft, ChevronRight, Save, ShoppingBag, ArrowRight, Trash2, Eye, UserPlus, LogIn, LayoutDashboard, Check, Image as ImageIcon, X, MonitorPlay, RefreshCcw, ArrowLeft, Settings, CreditCard, Link as LinkIcon, ListChecks, Pencil, Smartphone, Tablet, Monitor, Plus, MessageSquare, Images, Upload, Type, Truck, Flame, Zap, Globe, Banknote, MousePointerClick, Palette, Users, Copy, Target, MessageCircle, Code, Mail, Lock, Map, User, ArrowUp, ArrowDown, Package, ShieldCheck, FileText as FileTextIcon, Gift, Play, Film, Square } from 'lucide-react';
 
 // Declare Leaflet global
 declare global {
@@ -249,8 +249,8 @@ const createDefaultThankYouContent = (landingContent: GeneratedContent): Generat
         uiTranslation: landingContent.uiTranslation,
         typography: landingContent.typography,
         backgroundColor: '#f8fafc',
-        headline: landingContent.uiTranslation?.thankYouTitle || 'Grazie {name}!',
-        subheadline: landingContent.uiTranslation?.thankYouMsg || 'Il tuo ordine è stato ricevuto. Ti contatteremo al numero {phone} per confermare.',
+        headline: landingContent.uiTranslation?.thankYouTitle || 'Grazie per il suo ordine!',
+        subheadline: landingContent.uiTranslation?.thankYouMsg || 'Il suo ordine è stato ricevuto. Un nostro operatore la contatterà a breve al numero che ha inserito nel formulario per confermare l\'ordine.',
         heroImageBase64: undefined,
         // Empty the rest of the fields that don't apply
         heroImagePrompt: '',
@@ -344,6 +344,7 @@ export const App: React.FC = () => {
   const [customImagePrompt, setCustomImagePrompt] = useState('');
   const [imageUrl, setImageUrl] = useState(''); // State for URL input
   const [galleryImageUrl, setGalleryImageUrl] = useState(''); // State for gallery URL input
+  const [newVideoUrl, setNewVideoUrl] = useState(''); // State for new video URL
 
   const [reviewCount, setReviewCount] = useState<number>(10);
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
@@ -376,7 +377,7 @@ export const App: React.FC = () => {
   const [isLoadingPages, setIsLoadingPages] = useState(true);
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
   const [isMapOpen, setIsMapOpen] = useState(false);
-  const [imagePicker, setImagePicker] = useState<{ isOpen: boolean; type: 'feature' | 'testimonial' | 'box' | 'thankyou'; index: number | null }>({ isOpen: false, type: 'feature', index: null });
+  const [imagePicker, setImagePicker] = useState<{ isOpen: boolean; type: 'feature' | 'testimonial' | 'box' | 'thankyou' | 'testimonial_gallery'; index: number | null }>({ isOpen: false, type: 'feature', index: null });
   const userIdRef = useRef(Math.random().toString(36).substring(7));
   const presenceChannelRef = useRef<any>(null);
   const userGeoRef = useRef<Partial<OnlineUser>>({});
@@ -671,6 +672,40 @@ export const App: React.FC = () => {
       reader.readAsDataURL(file);
       e.target.value = ''; // Reset input
   };
+  
+  const handleReviewGalleryUpload = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!generatedContent || !e.target.files || e.target.files.length === 0) return;
+      const files = Array.from(e.target.files);
+      const readers = files.map(file => {
+          return new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                   if (reader.result) resolve(reader.result as string);
+              };
+              reader.readAsDataURL(file);
+          });
+      });
+
+      Promise.all(readers).then(newImages => {
+          const currentImages = generatedContent?.testimonials?.[index].images || [];
+          updateTestimonial(index, 'images', [...currentImages, ...newImages]);
+      });
+       e.target.value = '';
+  };
+  
+  const addReviewImage = (index: number, url: string) => {
+      if (!generatedContent || !generatedContent.testimonials) return;
+      const currentImages = generatedContent.testimonials[index].images || [];
+      updateTestimonial(index, 'images', [...currentImages, url]);
+  }
+
+  const removeReviewImage = (reviewIndex: number, imageIndex: number) => {
+      if (!generatedContent || !generatedContent.testimonials) return;
+      const currentImages = generatedContent.testimonials[reviewIndex].images || [];
+      const newImages = currentImages.filter((_, i) => i !== imageIndex);
+      updateTestimonial(reviewIndex, 'images', newImages);
+  };
+
 
   const handleReviewUrlChange = (index: number, value: string) => {
     setReviewUrlInputs(prev => ({ ...prev, [index]: value }));
@@ -720,7 +755,19 @@ export const App: React.FC = () => {
       const result = await generateLandingPage(product, reviewCount);
       let testimonials = result.testimonials || []; if (testimonials.length === 0 && result.testimonial) { testimonials = [result.testimonial]; }
       const initialGallery = [...(product.images || [])];
-      let resultWithTemplate: GeneratedContent = { ...result, testimonials, templateId: selectedTemplate, heroImageBase64: initialGallery.length > 0 ? initialGallery[0] : undefined, generatedImages: initialGallery };
+      let resultWithTemplate: GeneratedContent = { 
+          ...result, 
+          testimonials, 
+          templateId: selectedTemplate, 
+          heroImageBase64: initialGallery.length > 0 ? initialGallery[0] : undefined, 
+          generatedImages: initialGallery,
+          // Initialize Bottom CTA Config
+          bottomCtaConfig: {
+              enabled: true,
+              headline: `Proteggi ${product.name} Oggi`,
+              subheadline: "Non aspettare che sia troppo tardi. Investi nella qualità con uno sconto esclusivo."
+          }
+      };
       setGeneratedContent(resultWithTemplate);
       setGeneratedThankYouContent(createDefaultThankYouContent(resultWithTemplate));
       const lang = result.language || 'Italiano'; setTySlug(formatSlug(product.name) + getThankYouSuffix(lang));
@@ -839,6 +886,8 @@ export const App: React.FC = () => {
           enableShippingCost: page.content.enableShippingCost || false,
           insuranceConfig: page.content.insuranceConfig || { enabled: false, label: 'Assicurazione Spedizione VIP', cost: '4.99', defaultChecked: false },
           gadgetConfig: page.content.gadgetConfig || { enabled: false, label: '2 Gadget in Regalo', cost: '9.99', defaultChecked: false },
+          videoConfig: page.content.videoConfig || { enabled: false, title: 'Guardalo in azione!', videos: [] },
+          bottomCtaConfig: page.content.bottomCtaConfig || { enabled: true, headline: `Proteggi ${page.product_name} Oggi`, subheadline: "Non aspettare che sia troppo tardi. Investi nella qualità con uno sconto esclusivo." }, // DEFAULT BOTTOM CTA
           customTypography: page.content.customTypography || {},
           priceStyles: page.content.priceStyles || {},
           reviewsPosition: page.content.reviewsPosition,
@@ -885,7 +934,8 @@ export const App: React.FC = () => {
           const blob = base64ToBlob(imageString); 
           if (!blob) return imageString; 
           const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.png`; 
-          const { data, error } = await supabase.storage.from('landing-images').upload(fileName, blob, { contentType: blob.type || 'image/png', upsert: false }); 
+          // FIX: Cast blob to any to avoid type mismatch between DOM Blob and Supabase Blob types
+          const { data, error } = await supabase.storage.from('landing-images').upload(fileName, blob as any, { contentType: blob.type || 'image/png', upsert: false }); 
           if (error) { 
               console.error("Upload error:", error); 
               return imageString; 
@@ -911,7 +961,19 @@ export const App: React.FC = () => {
             if (lpContentToSave.heroImageBase64) lpContentToSave.heroImageBase64 = await uploadImageToStorage(lpContentToSave.heroImageBase64);
             if (lpContentToSave.generatedImages && lpContentToSave.generatedImages.length > 0) lpContentToSave.generatedImages = await Promise.all(lpContentToSave.generatedImages.map((img: string) => uploadImageToStorage(img)));
             if (lpContentToSave.features) for (let i = 0; i < lpContentToSave.features.length; i++) { if (lpContentToSave.features[i].image) lpContentToSave.features[i].image = await uploadImageToStorage(lpContentToSave.features[i].image); }
-            if (lpContentToSave.testimonials) for (let i = 0; i < lpContentToSave.testimonials.length; i++) { if (lpContentToSave.testimonials[i].image) lpContentToSave.testimonials[i].image = await uploadImageToStorage(lpContentToSave.testimonials[i].image); }
+            
+            // Process Testimonial Images (including multiple images per review)
+            if (lpContentToSave.testimonials) {
+                for (let i = 0; i < lpContentToSave.testimonials.length; i++) { 
+                    if (lpContentToSave.testimonials[i].image) {
+                        lpContentToSave.testimonials[i].image = await uploadImageToStorage(lpContentToSave.testimonials[i].image);
+                    }
+                    if (lpContentToSave.testimonials[i].images && lpContentToSave.testimonials[i].images.length > 0) {
+                         lpContentToSave.testimonials[i].images = await Promise.all(lpContentToSave.testimonials[i].images.map((img: string) => uploadImageToStorage(img)));
+                    }
+                }
+            }
+            
             if (lpContentToSave.boxContent && lpContentToSave.boxContent.image) lpContentToSave.boxContent.image = await uploadImageToStorage(lpContentToSave.boxContent.image);
             
             // Process thank you page images
@@ -970,51 +1032,243 @@ export const App: React.FC = () => {
     } catch (err) { console.error("Unexpected error saving:", err); alert("Errore imprevisto durante il salvataggio."); } finally { setIsSaving(false); }
   };
 
-  const handleCloseEditor = () => { setGeneratedContent(null); setGeneratedThankYouContent(null); setEditingPageId(null); setSlug(''); setTySlug(''); setProduct({ name: '', niche: '', description: '', targetAudience: '', tone: PageTone.PROFESSIONAL, language: 'Italiano', image: undefined, images: [], featureCount: 3 }); setSelectedTemplate('gadget-cod'); setImageGenerationCount(1); setReviewCount(10); setGenTechImages(false); setGenBeforeAfter(false); setGenHumanUse(false); setCustomImagePrompt(''); setPreviewMode('landing'); setEditingMode('landing'); setReviewUrlInputs({}); }
-  const handleDiscard = () => { if(confirm("Sei sicuro? Le modifiche non salvate andranno perse.")) { handleCloseEditor(); } }
-  const handleDeletePage = useCallback(async (id: string) => { if(!confirm("Sei sicuro di voler eliminare questa pagina?")) return; if (isSupabaseConfigured() && supabase && session?.id !== 'admin-local') { await supabase.from('landing_pages').delete().eq('id', id); fetchAllAdminPages(); } else { setAdminPages(prev => prev.filter(p => p.id !== id)); } }, [session, fetchAllAdminPages]);
-  
-  const updateContentField = (field: keyof GeneratedContent, value: any) => {
-    const contentUpdater = editingMode === 'landing' ? setGeneratedContent : setGeneratedThankYouContent;
-    contentUpdater(prev => prev ? { ...prev, [field]: value } : null);
+  // Adding the new helper for updating bottom CTA
+  const updateBottomCtaConfig = (key: 'enabled' | 'headline' | 'subheadline', value: any) => {
+      if (!generatedContent) return;
+      const currentConfig = generatedContent.bottomCtaConfig || { enabled: false, headline: '', subheadline: '' };
+      setGeneratedContent({ ...generatedContent, bottomCtaConfig: { ...currentConfig, [key]: value } });
   };
-  
-  const updateFeature = (index: number, key: 'title' | 'description' | 'image' | 'showCta', value: any) => { if (!generatedContent) return; const newFeatures = [...generatedContent.features]; newFeatures[index] = { ...newFeatures[index], [key]: value }; setGeneratedContent({ ...generatedContent, features: newFeatures }); };
-  const updateBenefit = (index: number, value: string) => { if (!generatedContent) return; const newBenefits = [...generatedContent.benefits]; newBenefits[index] = value; setGeneratedContent({ ...generatedContent, benefits: newBenefits }); };
-  
-  const updateTypography = (field: keyof TypographyConfig, value: string) => {
-      const contentUpdater = editingMode === 'landing' ? setGeneratedContent : setGeneratedThankYouContent;
-      contentUpdater(prev => {
+
+  const handleCloseEditor = () => {
+      setEditingPageId(null);
+      setGeneratedContent(null);
+      setGeneratedThankYouContent(null);
+      setProduct({ name: '', niche: '', description: '', targetAudience: '', tone: PageTone.PROFESSIONAL, language: 'Italiano', featureCount: 3, image: undefined, images: [] });
+      setSlug('');
+      setTySlug('');
+      setAdminSection('pages');
+      setDuplicationTarget(null);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDiscard = () => {
+      if (confirm("Sei sicuro di voler uscire? Le modifiche non salvate andranno perse.")) {
+          handleCloseEditor();
+      }
+  };
+
+  const updateStateContent = (updater: (prev: GeneratedContent) => GeneratedContent) => {
+      if (editingMode === 'landing') {
+          setGeneratedContent(prev => prev ? updater(prev) : null);
+      } else {
+          setGeneratedThankYouContent(prev => prev ? updater(prev) : null);
+      }
+  };
+
+  const updateContentField = (field: keyof GeneratedContent, value: any) => {
+      updateStateContent(prev => ({ ...prev, [field]: value }));
+  };
+
+  const updateStockConfig = (field: string, value: any) => {
+      if(editingMode !== 'landing') return;
+      setGeneratedContent(prev => {
           if (!prev) return null;
-          const currentTypo = prev.typography || { fontFamily: 'sans', h1Size: 'lg', h2Size: 'md', bodySize: 'md' };
-          return { ...prev, typography: { ...currentTypo, [field]: value } };
+          return { ...prev, stockConfig: { ...prev.stockConfig, [field]: value } as any };
       });
   };
 
-  const updateCustomTypography = (field: 'h1' | 'h2' | 'h3' | 'body' | 'small' | 'cta', value: string) => { if (!generatedContent) return; const currentCustom = generatedContent.customTypography || {}; setGeneratedContent({ ...generatedContent, customTypography: { ...currentCustom, [field]: value } }); };
-  const updatePriceStyles = (field: 'color' | 'fontSize', value: string) => { if (!generatedContent) return; const currentStyles = generatedContent.priceStyles || {}; setGeneratedContent({ ...generatedContent, priceStyles: { ...currentStyles, [field]: value } }); };
-  const updateStockConfig = (key: 'enabled' | 'quantity' | 'textOverride', value: any) => { if (!generatedContent) return; const currentConfig = generatedContent.stockConfig || { enabled: false, quantity: 13 }; setGeneratedContent({ ...generatedContent, stockConfig: { ...currentConfig, [key]: value } }); };
-  const updateSocialProofConfig = (key: 'enabled' | 'intervalSeconds' | 'maxShows', value: any) => { if (!generatedContent) return; const currentConfig = generatedContent.socialProofConfig || { enabled: true, intervalSeconds: 10, maxShows: 4 }; setGeneratedContent({ ...generatedContent, socialProofConfig: { ...currentConfig, [key]: value } }); };
-  const updateInsuranceConfig = (key: keyof NonNullable<GeneratedContent['insuranceConfig']>, value: any) => { if (!generatedContent) return; const currentConfig = generatedContent.insuranceConfig || { enabled: false, label: '', cost: '0.00', defaultChecked: false }; setGeneratedContent({ ...generatedContent, insuranceConfig: { ...currentConfig, [key]: value } });};
-  const updateGadgetConfig = (key: keyof NonNullable<GeneratedContent['gadgetConfig']>, value: any) => { if (!generatedContent) return; const currentConfig = generatedContent.gadgetConfig || { enabled: false, label: '', cost: '0.00', defaultChecked: false }; setGeneratedContent({ ...generatedContent, gadgetConfig: { ...currentConfig, [key]: value } });};
-  const updateTestimonial = (index: number, key: keyof Testimonial, value: any) => { if(!generatedContent || !generatedContent.testimonials) return; const newTestimonials = [...generatedContent.testimonials]; newTestimonials[index] = { ...newTestimonials[index], [key]: value }; setGeneratedContent({ ...generatedContent, testimonials: newTestimonials, testimonial: index === 0 ? newTestimonials[0] : generatedContent.testimonial }); };
-  const addTestimonial = () => { if(!generatedContent) return; const newT: Testimonial = { name: "Nuovo Cliente", role: "Acquisto Verificato", text: "...", date: new Date().toLocaleDateString('it-IT') }; setGeneratedContent({ ...generatedContent, testimonials: [...(generatedContent.testimonials || []), newT] }); };
-  const removeTestimonial = (index: number) => { if(!generatedContent || !generatedContent.testimonials) return; const newTestimonials = generatedContent.testimonials.filter((_, i) => i !== index); setGeneratedContent({ ...generatedContent, testimonials: newTestimonials, testimonial: index === 0 && newTestimonials.length > 0 ? newTestimonials[0] : generatedContent.testimonial }); };
-  const updateBoxContent = (field: 'enabled' | 'title' | 'items' | 'image', value: any) => { if (!generatedContent) return; const currentBox = generatedContent.boxContent || { enabled: false, title: "Ordinando oggi ricevi:", items: [] }; setGeneratedContent({ ...generatedContent, boxContent: { ...currentBox, [field]: value } }); };
-  const updateFormConfig = (index: number, field: keyof FormFieldConfig, value: any) => { if (!generatedContent || !generatedContent.formConfiguration) return; const newConfig = [...generatedContent.formConfiguration]; newConfig[index] = { ...newConfig[index], [field]: value }; if (field === 'enabled' && value === false) { newConfig[index].required = false; } setGeneratedContent({ ...generatedContent, formConfiguration: newConfig }); };
-  const updateUiTranslation = (key: keyof UiTranslation, value: string) => { if (!generatedContent || !generatedContent.uiTranslation) return; setGeneratedContent({ ...generatedContent, uiTranslation: { ...generatedContent.uiTranslation, [key]: value } }); };
+  const updateSocialProofConfig = (field: string, value: any) => {
+      if(editingMode !== 'landing') return;
+      setGeneratedContent(prev => {
+          if (!prev) return null;
+          return { ...prev, socialProofConfig: { ...prev.socialProofConfig, [field]: value } as any };
+      });
+  };
+
+  const updateInsuranceConfig = (field: string, value: any) => {
+      if(editingMode !== 'landing') return;
+      setGeneratedContent(prev => {
+          if (!prev) return null;
+          return { ...prev, insuranceConfig: { ...prev.insuranceConfig, [field]: value } as any };
+      });
+  };
+
+  const updateGadgetConfig = (field: string, value: any) => {
+      if(editingMode !== 'landing') return;
+      setGeneratedContent(prev => {
+          if (!prev) return null;
+          return { ...prev, gadgetConfig: { ...prev.gadgetConfig, [field]: value } as any };
+      });
+  };
+
+  const updateFeature = (index: number, field: string, value: any) => {
+      if(editingMode !== 'landing') return;
+      setGeneratedContent(prev => {
+          if (!prev) return null;
+          const newFeatures = [...prev.features];
+          newFeatures[index] = { ...newFeatures[index], [field]: value };
+          return { ...prev, features: newFeatures };
+      });
+  };
+
+  const updateBenefit = (index: number, value: string) => {
+      if(editingMode !== 'landing') return;
+      setGeneratedContent(prev => {
+          if (!prev) return null;
+          const newBenefits = [...prev.benefits];
+          newBenefits[index] = value;
+          return { ...prev, benefits: newBenefits };
+      });
+  };
+
+  const updateBoxContent = (field: string, value: any) => {
+      if(editingMode !== 'landing') return;
+      setGeneratedContent(prev => {
+          if (!prev) return null;
+          return { ...prev, boxContent: { ...prev.boxContent, [field]: value } as any };
+      });
+  };
+
+  const updateTestimonial = (index: number, field: string, value: any) => {
+      if(editingMode !== 'landing') return;
+      setGeneratedContent(prev => {
+          if (!prev) return null;
+          const newTestimonials = [...(prev.testimonials || [])];
+          newTestimonials[index] = { ...newTestimonials[index], [field]: value };
+          return { ...prev, testimonials: newTestimonials };
+      });
+  };
+
+  const addTestimonial = () => {
+      if(editingMode !== 'landing') return;
+      setGeneratedContent(prev => {
+          if (!prev) return null;
+          const newTestimonial: Testimonial = { name: "Nuovo Cliente", text: "Recensione...", rating: 5, role: "Acquisto Verificato", date: new Date().toLocaleDateString() };
+          return { ...prev, testimonials: [newTestimonial, ...(prev.testimonials || [])] };
+      });
+  };
+
+  const removeTestimonial = (index: number) => {
+      if(editingMode !== 'landing') return;
+      setGeneratedContent(prev => {
+          if (!prev) return null;
+          const newTestimonials = [...(prev.testimonials || [])];
+          newTestimonials.splice(index, 1);
+          return { ...prev, testimonials: newTestimonials };
+      });
+  };
+
+  const updateFormConfig = (index: number, field: string, value: any) => {
+      if(editingMode !== 'landing') return;
+      setGeneratedContent(prev => {
+          if (!prev) return null;
+          const newForm = [...(prev.formConfiguration || [])];
+          newForm[index] = { ...newForm[index], [field]: value };
+          return { ...prev, formConfiguration: newForm };
+      });
+  };
+
+  const updatePriceStyles = (field: string, value: any) => {
+      if(editingMode !== 'landing') return;
+      setGeneratedContent(prev => {
+          if (!prev) return null;
+          return { ...prev, priceStyles: { ...prev.priceStyles, [field]: value } };
+      });
+  };
   
-  const handleViewPage = useCallback((page: LandingPageRow) => {
-    setSelectedPublicPage(page);
-    setView('product_view');
-    const param = page.slug ? `s=${page.slug}` : `p=${page.id}`;
-    const newUrl = `?${param}`;
-    window.history.pushState({}, '', newUrl);
-    updateUserPresence(newUrl);
-  }, [updateUserPresence]);
+  const updateTypography = (field: string, value: any) => {
+      updateStateContent(prev => ({ ...prev, typography: { ...prev.typography, [field]: value } as TypographyConfig }));
+  };
+
+  const updateCustomTypography = (field: string, value: any) => {
+      updateStateContent(prev => ({ ...prev, customTypography: { ...prev.customTypography, [field]: value } }));
+  };
+
+  const updateVideoConfig = (field: string, value: any) => {
+      if(editingMode !== 'landing') return;
+      setGeneratedContent(prev => {
+          if (!prev) return null;
+          return { ...prev, videoConfig: { ...prev.videoConfig, [field]: value } as any };
+      });
+  };
+
+  const addVideo = () => {
+      if (!newVideoUrl.trim()) return;
+      if(editingMode !== 'landing') return;
+      setGeneratedContent(prev => {
+          if (!prev) return null;
+          const currentVideos = prev.videoConfig?.videos || [];
+          const newVideo: VideoItem = {
+              id: Math.random().toString(36).substr(2, 9),
+              url: newVideoUrl,
+              active: true
+          };
+          return { 
+              ...prev, 
+              videoConfig: { 
+                  ...prev.videoConfig, 
+                  videos: [...currentVideos, newVideo],
+                  enabled: true 
+              } as any 
+          };
+      });
+      setNewVideoUrl('');
+  };
+
+  const removeVideo = (id: string) => {
+      if(editingMode !== 'landing') return;
+      setGeneratedContent(prev => {
+          if (!prev) return null;
+          const currentVideos = prev.videoConfig?.videos || [];
+          return { 
+              ...prev, 
+              videoConfig: { 
+                  ...prev.videoConfig, 
+                  videos: currentVideos.filter(v => v.id !== id) 
+              } as any 
+          };
+      });
+  };
+
+  const moveVideo = (index: number, direction: 'up' | 'down') => {
+      if(editingMode !== 'landing') return;
+      setGeneratedContent(prev => {
+          if (!prev) return null;
+          const videos = [...(prev.videoConfig?.videos || [])];
+          const targetIndex = direction === 'up' ? index - 1 : index + 1;
+          if (targetIndex < 0 || targetIndex >= videos.length) return prev;
+          [videos[index], videos[targetIndex]] = [videos[targetIndex], videos[index]];
+          return { ...prev, videoConfig: { ...prev.videoConfig, videos } as any };
+      });
+  };
+
+  const handleViewPage = (page: LandingPageRow) => {
+      setSelectedPublicPage(page);
+      if (page.thank_you_slug && window.location.search.includes(page.thank_you_slug)) {
+          setView('thank_you_view');
+      } else {
+          setView('product_view');
+      }
+      window.scrollTo(0,0);
+  };
+
+  const handleDeletePage = async (id: string) => {
+      if (!confirm("Sei sicuro di voler eliminare questa pagina?")) return;
+      if (isSupabaseConfigured() && supabase) {
+          const { error } = await supabase.from('landing_pages').delete().eq('id', id);
+          if (error) {
+              alert("Errore eliminazione: " + error.message);
+          } else {
+              fetchAllAdminPages();
+          }
+      } else {
+          setAdminPages(prev => prev.filter(p => p.id !== id));
+      }
+  };
 
   // ... (Render logic) ...
   if (view === 'product_view' && selectedPublicPage) {
+      // ... (Existing product view logic) ...
       const pageLang = selectedPublicPage.content.language || 'Italiano';
       const langConfig = getLanguageConfig(pageLang);
       const completeUiTranslation = { ...(langConfig.ui || {}), ...(selectedPublicPage.content.uiTranslation || {}) } as UiTranslation;
@@ -1047,6 +1301,7 @@ export const App: React.FC = () => {
       );
   }
 
+  // ... (Thank you view logic) ...
   if (view === 'thank_you_view' && selectedPublicPage) {
     const pageLang = selectedPublicPage.content.language || 'Italiano';
     const langConfig = getLanguageConfig(pageLang);
@@ -1081,6 +1336,8 @@ export const App: React.FC = () => {
                     updateFeature(imagePicker.index, 'image', image);
                 } else if (imagePicker.type === 'testimonial' && imagePicker.index !== null) {
                     updateTestimonial(imagePicker.index, 'image', image);
+                } else if (imagePicker.type === 'testimonial_gallery' && imagePicker.index !== null) {
+                    addReviewImage(imagePicker.index, image);
                 } else if (imagePicker.type === 'box') {
                     updateBoxContent('image', image);
                 } else if (imagePicker.type === 'thankyou') {
@@ -1115,6 +1372,7 @@ export const App: React.FC = () => {
             {adminSection === 'settings' ? (
                 // ... (Settings view) ...
                 <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4">
+                    {/* ... Settings Content ... */}
                     <div className="flex items-center gap-3 mb-8"><div className="bg-gray-100 p-3 rounded-xl"><Settings className="w-8 h-8 text-emerald-600" /></div><div><h1 className="text-2xl font-bold text-slate-900">Impostazioni Globali Sito</h1><p className="text-slate-600">Personalizza il nome del sito e i testi del footer.</p></div></div>
                     <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-xl space-y-6">
                         <div><label className="block text-sm font-bold text-slate-700 mb-2">Nome del Sito</label><input type="text" value={siteConfig.siteName} onChange={(e) => setSiteConfig({...siteConfig, siteName: e.target.value})} className="w-full bg-gray-100 border border-gray-300 rounded-xl p-4 text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none text-lg font-bold" placeholder="es. BESTOFFERS"/><p className="text-xs text-slate-500 mt-2">Appare nell'header e nel footer.</p></div>
@@ -1127,12 +1385,15 @@ export const App: React.FC = () => {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    {/* ... (Editor Layout: Left and Right Columns) ... */}
                     <div className="lg:col-span-5 xl:col-span-4 h-fit sticky top-24">
                         {!generatedContent ? (
                             <>
+                                {/* ... (Generation Form) ... */}
                                 <div className="mb-6"><h1 className="text-2xl font-bold text-slate-900 mb-1">Crea Nuova Landing</h1><p className="text-slate-600 text-sm">Compila i dati e genera la tua pagina.</p></div>
                                 <div className="bg-white rounded-2xl p-6 shadow-xl border border-gray-200 max-h-[calc(100vh-200px)] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-400">
                                     <div className="space-y-6">
+                                        {/* ... (Existing Generation Inputs) ... */}
                                         <div>
                                             <label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-3">Step 1: Design</label>
                                             <div className="grid grid-cols-3 gap-2">
@@ -1183,6 +1444,7 @@ export const App: React.FC = () => {
                             </>
                         ) : (
                             <div className="animate-in fade-in slide-in-from-left-4 duration-300">
+                                {/* ... (Edit Mode Header) ... */}
                                 <div className="flex items-center gap-2 mb-4">
                                     <button onClick={handleDiscard} className="p-2 hover:bg-gray-200 rounded-full transition"><ArrowLeft className="w-5 h-5 text-slate-500" /></button>
                                     <div><h1 className="text-2xl font-bold text-slate-900 mb-0.5">Modifica Pagina</h1><p className="text-slate-500 text-xs">{product.name}</p></div>
@@ -1195,6 +1457,7 @@ export const App: React.FC = () => {
                                 <div className="bg-white rounded-2xl p-6 shadow-xl border border-gray-200 max-h-[calc(100vh-220px)] overflow-y-auto scrollbar-thin scrollbar-thumb-emerald-600">
                                     {editingMode === 'landing' ? (
                                     <div className="space-y-8">
+                                        {/* ... (Previous Sections 1-12) ... */}
                                         <div className="border-b border-gray-200 pb-4">
                                             <div className="flex items-center gap-2 mb-3"><LinkIcon className="w-4 h-4 text-emerald-600" /><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide">URL & Link</label></div>
                                             <div className="space-y-3">
@@ -1228,6 +1491,7 @@ export const App: React.FC = () => {
                                         <div><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">1. Design</label><div className="grid grid-cols-3 gap-2 mb-4">{TEMPLATES.map((t) => (<div key={t.id} onClick={() => setSelectedTemplate(t.id)} className={`cursor-pointer p-1.5 rounded border-2 transition-all text-center ${selectedTemplate === t.id ? 'border-emerald-500 bg-emerald-50' : 'border-gray-300 hover:bg-gray-100'}`}><p className="text-[9px] font-bold text-slate-800 truncate">{t.name}</p></div>))}</div></div>
                                         {/* Price & Offer */}
                                         <div className="border-t border-gray-200 pt-4"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">2. Prezzo & Offerta</label><div className="space-y-3"><div className="grid grid-cols-2 gap-3"><div><label className="text-[10px] text-slate-500">Prezzo</label><input type="text" value={generatedContent.price} onChange={(e) => updateContentField('price', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm text-slate-900"/></div><div><label className="text-[10px] text-slate-500">Prezzo Originale</label><input type="text" value={generatedContent.originalPrice} onChange={(e) => updateContentField('originalPrice', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm text-slate-900"/></div></div><div className="grid grid-cols-2 gap-3"><div><label className="text-[10px] text-slate-500">Valuta</label><select value={generatedContent.currency} onChange={(e) => updateContentField('currency', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm text-slate-900">{SUPPORTED_CURRENCIES.map(c => <option key={c.symbol} value={c.symbol}>{c.label}</option>)}</select></div><div><label className="text-[10px] text-slate-500">Costo Spedizione</label><input type="text" value={generatedContent.shippingCost} onChange={(e) => updateContentField('shippingCost', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm text-slate-900"/></div></div><div className="flex items-center gap-2"><input type="checkbox" checked={generatedContent.enableShippingCost || false} onChange={(e) => updateContentField('enableShippingCost', e.target.checked)} className="w-4 h-4 accent-emerald-500"/><span className="text-xs text-slate-600">Mostra Costo Spedizione nel carrello</span></div><div className="grid grid-cols-2 gap-3"><div><label className="text-[10px] text-slate-500">Quantità Stock</label><input type="number" value={generatedContent.stockConfig?.quantity || 13} onChange={(e) => updateStockConfig('quantity', parseInt(e.target.value))} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm text-slate-900"/></div><div className="flex items-end pb-2"><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={generatedContent.stockConfig?.enabled || false} onChange={(e) => updateStockConfig('enabled', e.target.checked)} className="w-4 h-4 accent-emerald-500 rounded"/><span className="text-xs text-slate-600">Mostra Scarsità</span></label></div></div>{generatedContent.stockConfig?.enabled && (<div className="mt-2 animate-in fade-in slide-in-from-top-1"><label className="text-[10px] text-slate-500">Testo Personalizzato (Usa <strong>{'{x}'}</strong> per il numero)</label><input type="text" placeholder="Es: Affrettati! Solo {x} pezzi rimasti!" value={generatedContent.stockConfig?.textOverride || ''} onChange={(e) => updateStockConfig('textOverride', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm text-slate-900 placeholder-slate-400"/></div>)}<div className="bg-gray-50 p-3 rounded-lg border border-gray-200"><div className="flex items-center justify-between mb-2"><label className="text-xs font-bold text-slate-700">Notifiche Social Proof</label><input type="checkbox" checked={generatedContent.socialProofConfig?.enabled !== false} onChange={(e) => updateSocialProofConfig('enabled', e.target.checked)} className="w-4 h-4 accent-emerald-500 rounded"/></div>{generatedContent.socialProofConfig?.enabled !== false && (<div className="grid grid-cols-2 gap-2"><div><label className="text-[10px] text-slate-500">Intervallo (sec)</label><input type="number" value={generatedContent.socialProofConfig?.intervalSeconds || 10} onChange={(e) => updateSocialProofConfig('intervalSeconds', parseInt(e.target.value))} className="w-full bg-white border border-gray-300 rounded p-1 text-xs text-slate-900"/></div><div><label className="text-[10px] text-slate-500">Max Mostre</label><input type="number" value={generatedContent.socialProofConfig?.maxShows || 4} onChange={(e) => updateSocialProofConfig('maxShows', parseInt(e.target.value))} className="w-full bg-white border border-gray-300 rounded p-1 text-xs text-slate-900"/></div></div>)}</div>
+                                            {/* ... Insurance & Gadget Config ... */}
                                             <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 mt-3">
                                                 <div className="flex items-center justify-between mb-2">
                                                     <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5"><ShieldCheck className="w-3 h-3 text-emerald-500"/> Assicurazione Spedizione</label>
@@ -1315,7 +1579,7 @@ export const App: React.FC = () => {
                                                 )}
                                             </div>
                                         </div></div>
-                                        {/* Testo */}
+                                        {/* Testo, Gallery, Benefits, Box, Features, Reviews, Form, Style, Typography, Advanced, Video */}
                                         <div className="border-t border-gray-200 pt-4"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">3. Testo & Contenuto</label><div className="space-y-3"><div><label className="text-[10px] text-slate-500">Headline H1</label><textarea value={generatedContent.headline} onChange={(e) => updateContentField('headline', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm text-slate-900 h-20"/></div><div><label className="text-[10px] text-slate-500">Subheadline H2</label><textarea value={generatedContent.subheadline} onChange={(e) => updateContentField('subheadline', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm text-slate-900 h-20"/></div><div><label className="text-[10px] text-slate-500">Testo Barra Annunci</label><input type="text" value={generatedContent.announcementBarText} onChange={(e) => updateContentField('announcementBarText', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm text-slate-900"/></div><div><label className="text-[10px] text-slate-500">Testo Bottone CTA</label><input type="text" value={generatedContent.ctaText} onChange={(e) => updateContentField('ctaText', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm text-slate-900"/></div><div><label className="text-[10px] text-slate-500">Sottotesto Bottone</label><input type="text" value={generatedContent.ctaSubtext} onChange={(e) => updateContentField('ctaSubtext', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm text-slate-900"/></div></div></div>
                                         {/* Gallery */}
                                         <div className="border-t border-gray-200 pt-4"><div className="flex justify-between items-center mb-2"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide">4. Galleria Immagini</label><span className="text-xs text-slate-500">{generatedContent.generatedImages?.length || 0} immagini</span></div><div className="flex flex-col gap-2"><div className="grid grid-cols-3 gap-2">{generatedContent.generatedImages?.map((img, i) => (<div key={i} className="relative aspect-square rounded border border-gray-300 overflow-hidden group bg-gray-100"><img src={img} alt={`Gallery ${i}`} className="w-full h-full object-cover"/><div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-1"><button onClick={() => moveGalleryImage(i, 'left')} className="p-1 text-white hover:bg-white/20 rounded"><ChevronLeft className="w-4 h-4"/></button><button onClick={() => removeGalleryImage(img)} className="p-1 text-white hover:bg-red-500 rounded"><X className="w-4 h-4"/></button><button onClick={() => moveGalleryImage(i, 'right')} className="p-1 text-white hover:bg-white/20 rounded"><ChevronRight className="w-4 h-4"/></button></div><button onClick={() => updateContentField('heroImageBase64', img)} className={`absolute top-1 left-1 p-1 text-xs rounded-full border transition ${generatedContent.heroImageBase64 === img ? 'bg-emerald-500 text-white border-emerald-300' : 'bg-white/50 backdrop-blur text-slate-700 border-slate-200'}`} title="Imposta come principale"><ImageIcon className="w-3 h-3"/></button></div>))}</div><div className="flex items-center gap-2"><input type="url" value={galleryImageUrl} onChange={e => setGalleryImageUrl(e.target.value)} placeholder="Aggiungi URL" className="flex-1 bg-gray-50 border border-gray-300 rounded-lg p-2 text-sm"/><button onClick={() => {addGalleryImageUrl(galleryImageUrl); setGalleryImageUrl('');}} className="p-2 bg-emerald-500 text-white rounded-lg"><Plus className="w-4 h-4"/></button></div><div className="w-full border border-dashed border-gray-300 rounded-lg p-3 text-center cursor-pointer bg-gray-50 text-xs text-slate-500 hover:border-emerald-500" onClick={() => galleryInputRef.current?.click()}>Carica Altre<input type="file" ref={galleryInputRef} multiple className="hidden" onChange={handleGalleryUpload}/></div><button onClick={handleGenerateMoreImages} disabled={isGeneratingImage} className="w-full text-xs py-2 bg-blue-50 text-blue-700 border border-blue-200 font-bold rounded-lg flex items-center justify-center gap-1 hover:bg-blue-100 transition">{isGeneratingImage ? <><Loader2 className="w-3 h-3 animate-spin"/> Generando...</> : <><Sparkles className="w-3 h-3"/> Genera con AI</>}</button></div></div>
@@ -1387,42 +1651,41 @@ export const App: React.FC = () => {
                                         </div>
                                         {/* Reviews */}
                                         <div className="border-t border-gray-200 pt-4"><div className="flex justify-between items-center mb-2"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide">7. Recensioni</label><div className="flex gap-2"><button onClick={handleGenerateMoreReviews} disabled={isGeneratingReviews} className="text-xs bg-blue-50 border border-blue-200 text-blue-700 font-bold px-2 py-1 rounded-md hover:bg-blue-100">{isGeneratingReviews ? <Loader2 className="w-3 h-3 animate-spin"/> : <Sparkles className="w-3 h-3"/>}</button><button onClick={addTestimonial} className="text-xs bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold px-2 py-1 rounded-md hover:bg-emerald-100"><Plus className="w-3 h-3"/></button></div></div><div><label className="text-[10px] text-slate-500">Inserisci dopo paragrafo #</label><input type="number" min="0" max={generatedContent.features.length} value={generatedContent.reviewsPosition === undefined ? generatedContent.features.length : generatedContent.reviewsPosition} onChange={(e) => updateContentField('reviewsPosition', e.target.value === '' ? undefined : parseInt(e.target.value))} className="w-full bg-gray-50 border border-gray-300 rounded p-1.5 text-sm"/></div><div className="space-y-4 mt-2">{generatedContent.testimonials?.map((t, i) => (<div key={i} className="bg-gray-50 p-3 rounded-lg border border-gray-200 relative group"><button onClick={() => removeTestimonial(i)} className="absolute top-1 right-1 p-1 text-red-500 hover:bg-red-100 rounded-full opacity-0 group-hover:opacity-100 transition"><X className="w-3 h-3"/></button><div className="grid grid-cols-2 gap-2"><input type="text" value={t.name} onChange={e => updateTestimonial(i, 'name', e.target.value)} placeholder="Nome" className="bg-white border rounded p-1.5 text-xs col-span-1"/><input type="text" value={t.title} onChange={e => updateTestimonial(i, 'title', e.target.value)} placeholder="Titolo" className="bg-white border rounded p-1.5 text-xs col-span-1"/></div><textarea value={t.text} onChange={e => updateTestimonial(i, 'text', e.target.value)} placeholder="Testo recensione" className="w-full bg-white border rounded p-1.5 text-xs mt-2 h-16"/>
-                                        <div className="flex items-center justify-between mt-2">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-10 h-10 bg-white border rounded flex-shrink-0">
-                                                    {t.image && <img src={t.image} className="w-full h-full object-cover"/>}
+                                        <div className="mt-2">
+                                            <label className="text-[10px] text-slate-500 mb-1 block">Immagini Recensione</label>
+                                            <div className="flex flex-wrap gap-2 items-start">
+                                                {/* Main Image */}
+                                                <div className="relative w-16 h-16 bg-white border rounded flex-shrink-0 group/img">
+                                                     {t.image ? <img src={t.image} className="w-full h-full object-cover rounded"/> : <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageIcon className="w-6 h-6"/></div>}
+                                                     {t.image && <button onClick={() => updateTestimonial(i, 'image', '')} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/img:opacity-100 transition"><X className="w-3 h-3"/></button>}
                                                 </div>
-                                                <div className="flex gap-1">
-                                                    <button onClick={() => {
-                                                        const input = document.getElementById(`review-img-${i}`) as HTMLInputElement;
-                                                        input?.click();
-                                                    }} className="text-xs bg-white border border-gray-300 rounded px-2 py-1 hover:bg-gray-50">Carica</button>
-                                                    <button onClick={() => setImagePicker({isOpen: true, type: 'testimonial', index: i})} className="text-xs bg-white border border-gray-300 rounded px-2 py-1 hover:bg-gray-50">Galleria</button>
-                                                    <input type="file" id={`review-img-${i}`} className="hidden" accept="image/*" onChange={(e) => handleReviewImageUpload(i, e)} />
+                                                {/* Gallery Images */}
+                                                {t.images?.map((img, imgIdx) => (
+                                                    <div key={imgIdx} className="relative w-16 h-16 bg-white border rounded flex-shrink-0 group/img">
+                                                        <img src={img} className="w-full h-full object-cover rounded" />
+                                                        <button onClick={() => removeReviewImage(i, imgIdx)} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/img:opacity-100 transition"><X className="w-3 h-3"/></button>
+                                                    </div>
+                                                ))}
+                                                {/* Add Button */}
+                                                 <div className="flex flex-col gap-1">
+                                                    <button onClick={() => (document.getElementById(`review-gallery-img-${i}`) as HTMLInputElement)?.click()} className="w-16 h-16 bg-white border border-dashed border-gray-300 rounded flex flex-col items-center justify-center text-slate-400 hover:border-emerald-500 hover:text-emerald-500 transition">
+                                                        <Plus className="w-5 h-5"/>
+                                                        <span className="text-[9px]">Add</span>
+                                                    </button>
+                                                    <button onClick={() => setImagePicker({isOpen: true, type: 'testimonial_gallery', index: i})} className="text-[10px] text-blue-600 hover:underline">Galleria</button>
+                                                    <input type="file" id={`review-gallery-img-${i}`} className="hidden" accept="image/*" multiple onChange={(e) => handleReviewGalleryUpload(i, e)} />
                                                 </div>
                                             </div>
+                                        </div>
+                                        <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200">
                                             <div className="flex items-center gap-1">
                                                 <input type="number" min="1" max="5" value={t.rating || 5} onChange={e => updateTestimonial(i, 'rating', parseInt(e.target.value))} className="w-12 bg-white border rounded p-1.5 text-xs"/>
                                                 <Star className="w-3 h-3 text-yellow-400 fill-current"/>
                                             </div>
-                                        </div>
-                                        <div className="mt-2">
-                                            <label className="text-[10px] text-slate-500">Immagine da URL</label>
-                                            <div className="flex items-center gap-1">
-                                                <input
-                                                    type="url"
-                                                    placeholder="Incolla URL..."
-                                                    className="flex-1 bg-white border rounded p-1.5 text-xs"
-                                                    value={reviewUrlInputs[i] ?? (t.image && t.image.startsWith('http') ? t.image : '')}
-                                                    onChange={(e) => handleReviewUrlChange(i, e.target.value)}
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleApplyReviewUrl(i)}
-                                                    className="text-xs bg-white border border-gray-300 rounded px-2 py-1 hover:bg-gray-50"
-                                                >
-                                                    Applica
-                                                </button>
+                                             {/* URL Input */}
+                                            <div className="flex items-center gap-1 w-1/2">
+                                                <input type="url" placeholder="URL immagine..." className="flex-1 bg-white border rounded p-1.5 text-[10px]" value={reviewUrlInputs[i] ?? ''} onChange={(e) => handleReviewUrlChange(i, e.target.value)} />
+                                                <button type="button" onClick={() => handleApplyReviewUrl(i)} className="text-[10px] bg-white border border-gray-300 rounded px-2 py-1 hover:bg-gray-50">Set Main</button>
                                             </div>
                                         </div>
                                         </div>))}</div></div>
@@ -1450,6 +1713,7 @@ export const App: React.FC = () => {
                                                     <div><label className="text-[10px] text-slate-500">H2</label><select value={generatedContent.typography?.h2Size} onChange={(e) => updateTypography('h2Size', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"><option value="sm">SM</option><option value="md">MD</option><option value="lg">LG</option><option value="xl">XL</option></select></div>
                                                     <div><label className="text-[10px] text-slate-500">Body</label><select value={generatedContent.typography?.bodySize} onChange={(e) => updateTypography('bodySize', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"><option value="sm">SM</option><option value="md">MD</option><option value="lg">LG</option></select></div>
                                                 </div>
+                                                {/* Custom Typography Inputs... */}
                                                 <div>
                                                     <label className="text-[10px] text-slate-500">Dimensioni Custom (px) - <span className="text-red-500">Avanzato</span></label>
                                                     <div className="grid grid-cols-3 gap-2 mt-1">
@@ -1473,12 +1737,71 @@ export const App: React.FC = () => {
                                                 <div><label className="text-[10px] text-slate-500">Testo Copyright Footer</label><input type="text" value={generatedContent.customFooterCopyrightText || ''} onChange={(e) => updateContentField('customFooterCopyrightText', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div>
                                             </div>
                                         </div>
+                                         {/* VIDEO SECTION (12) */}
+                                        <div className="border-t border-gray-200 pt-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="block text-xs font-bold text-pink-500 uppercase tracking-wide flex items-center gap-2"><Film className="w-4 h-4"/> 12. Sezione Video (TikTok/Reels)</label>
+                                                <input type="checkbox" checked={generatedContent.videoConfig?.enabled || false} onChange={e => updateVideoConfig('enabled', e.target.checked)} className="w-4 h-4 accent-pink-500"/>
+                                            </div>
+                                            {generatedContent.videoConfig?.enabled && (
+                                                <div className="space-y-3 p-3 bg-pink-50 rounded-lg border border-pink-100">
+                                                    <div>
+                                                        <label className="text-[10px] text-slate-500">Titolo Sezione</label>
+                                                        <input type="text" value={generatedContent.videoConfig?.title || ''} onChange={e => updateVideoConfig('title', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm" placeholder="Guardalo in azione!"/>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] text-slate-500">Aggiungi Video (Link MP4/CDN)</label>
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <input type="text" value={newVideoUrl} onChange={e => setNewVideoUrl(e.target.value)} className="flex-1 bg-white border border-gray-300 rounded p-2 text-sm" placeholder="https://cdn.example.com/video.mp4"/>
+                                                            <button onClick={addVideo} disabled={!newVideoUrl.trim()} className="bg-pink-500 text-white px-3 py-2 rounded text-sm font-bold hover:bg-pink-600 disabled:opacity-50">Aggiungi</button>
+                                                        </div>
+                                                        <p className="text-[9px] text-slate-400 mb-2">Nota: Inserisci solo link diretti a file video (.mp4) o CDN. I link web di TikTok/Instagram non funzionano direttamente.</p>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        {generatedContent.videoConfig?.videos?.map((v, idx) => (
+                                                            <div key={v.id} className="bg-white p-2 rounded border border-gray-200 flex items-center justify-between gap-2">
+                                                                <div className="flex items-center gap-2 overflow-hidden">
+                                                                    <div className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center text-[10px] font-bold text-slate-500">{idx + 1}</div>
+                                                                    <p className="text-xs text-slate-600 truncate flex-1">{v.url}</p>
+                                                                </div>
+                                                                <div className="flex items-center gap-1">
+                                                                    <button onClick={() => moveVideo(idx, 'up')} disabled={idx === 0} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30"><ArrowUp className="w-3 h-3"/></button>
+                                                                    <button onClick={() => moveVideo(idx, 'down')} disabled={idx === (generatedContent.videoConfig?.videos?.length || 0) - 1} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30"><ArrowDown className="w-3 h-3"/></button>
+                                                                    <button onClick={() => removeVideo(v.id)} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-3 h-3"/></button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                        {(!generatedContent.videoConfig?.videos || generatedContent.videoConfig.videos.length === 0) && (
+                                                            <p className="text-center text-xs text-slate-400 py-2">Nessun video aggiunto.</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {/* NEW: BOTTOM CTA SECTION (13) */}
+                                        <div className="border-t border-gray-200 pt-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="block text-xs font-bold text-teal-600 uppercase tracking-wide flex items-center gap-2"><Square className="w-4 h-4"/> 13. Sezione Finale CTA (Sotto Recensioni)</label>
+                                                <input type="checkbox" checked={generatedContent.bottomCtaConfig?.enabled !== false} onChange={e => updateBottomCtaConfig('enabled', e.target.checked)} className="w-4 h-4 accent-teal-600"/>
+                                            </div>
+                                            {generatedContent.bottomCtaConfig?.enabled !== false && (
+                                                <div className="space-y-3 p-3 bg-teal-50 rounded-lg border border-teal-100">
+                                                    <div>
+                                                        <label className="text-[10px] text-slate-500">Titolo Finale</label>
+                                                        <input type="text" value={generatedContent.bottomCtaConfig?.headline || ''} onChange={e => updateBottomCtaConfig('headline', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm" placeholder="Proteggi i Tuoi Piedi Oggi"/>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] text-slate-500">Sottotitolo</label>
+                                                        <textarea value={generatedContent.bottomCtaConfig?.subheadline || ''} onChange={e => updateBottomCtaConfig('subheadline', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm h-16" placeholder="Non aspettare che sia troppo tardi..."/>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                     ) : (
                                     <div className="space-y-8 animate-in fade-in">
-                                        {/* TY Page Text */}
+                                        {/* ... TY Page Settings ... */}
                                         <div className="border-b border-gray-200 pb-4"><label className="block text-xs font-bold text-purple-600 uppercase tracking-wide mb-2">Testo Thank You Page</label><div className="space-y-3"><div><label className="text-[10px] text-slate-500">Titolo (Usa <strong>{'{name}'}</strong> e <strong>{'{phone}'}</strong>)</label><input type="text" value={generatedThankYouContent?.headline || ''} onChange={(e) => updateContentField('headline', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div><div><label className="text-[10px] text-slate-500">Messaggio (Usa <strong>{'{name}'}</strong> e <strong>{'{phone}'}</strong>)</label><textarea value={generatedThankYouContent?.subheadline || ''} onChange={(e) => updateContentField('subheadline', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm h-20"/></div></div></div>
-                                        {/* TY Page Design */}
                                         <div>
                                             <label className="block text-xs font-bold text-purple-600 uppercase tracking-wide mb-2">Design Thank You Page</label>
                                             <div className="space-y-3">
@@ -1499,7 +1822,6 @@ export const App: React.FC = () => {
                                                 <div><label className="text-[10px] text-slate-500">Colore Sfondo Pagina (Hex)</label><input type="text" value={generatedThankYouContent?.backgroundColor || '#f8fafc'} onChange={(e) => updateContentField('backgroundColor', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div>
                                             </div>
                                         </div>
-                                         {/* TY Page Scripts */}
                                         <div className="border-t border-gray-200 pt-4">
                                             <label className="block text-xs font-bold text-purple-600 uppercase tracking-wide mb-2">Script Thank You Page</label>
                                             <div className="space-y-3">
@@ -1514,6 +1836,7 @@ export const App: React.FC = () => {
                             </div>
                         )}
                     </div>
+                    {/* ... (Existing Right Column Logic) ... */}
                     <div className="lg:col-span-7 xl:col-span-8">
                         {!generatedContent ? (
                            <div className="h-full">
