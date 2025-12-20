@@ -19,8 +19,9 @@ export const isSupabaseConfigured = (): boolean => {
   return !!supabase;
 };
 
-// Helper function to convert Base64 to Blob
-export const base64ToBlob = (base64: string): Blob | null => {
+// FIX: Renamed function and changed return type to avoid Blob type conflicts.
+// It now returns the ArrayBuffer and MIME type directly.
+export const base64ToBlob = (base64: string): { buffer: ArrayBuffer, mime: string } | null => {
   try {
     const arr = base64.split(',');
     const mimeMatch = arr[0].match(/:(.*?);/);
@@ -35,9 +36,9 @@ export const base64ToBlob = (base64: string): Blob | null => {
       u8arr[n] = bstr.charCodeAt(n);
     }
     
-    return new Blob([u8arr], { type: mime });
+    return { buffer: u8arr.buffer, mime: mime };
   } catch (e) {
-    console.error("Error converting base64 to blob", e);
+    console.error("Error converting base64 to parts", e);
     return null;
   }
 };
