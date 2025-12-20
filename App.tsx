@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase, isSupabaseConfigured, base64ToBlob } from './services/supabaseClient';
 import { generateLandingPage, generateReviews, generateActionImages, translateLandingPage, getLanguageConfig } from './services/geminiService';
 import LandingPage, { ThankYouPage } from './components/LandingPage';
-import { ProductDetails, GeneratedContent, PageTone, UserSession, LandingPageRow, TemplateId, FormFieldConfig, TypographyConfig, UiTranslation, SiteConfig, Testimonial, VideoItem } from './types';
-import { Loader2, LogOut, Sparkles, Star, ChevronLeft, ChevronRight, Save, ShoppingBag, ArrowRight, Trash2, Eye, UserPlus, LogIn, LayoutDashboard, Check, Image as ImageIcon, X, MonitorPlay, RefreshCcw, ArrowLeft, Settings, CreditCard, Link as LinkIcon, ListChecks, Pencil, Smartphone, Tablet, Monitor, Plus, MessageSquare, Images, Upload, Type, Truck, Flame, Zap, Globe, Banknote, MousePointerClick, Palette, Users, Copy, Target, MessageCircle, Code, Mail, Lock, Map, User, ArrowUp, ArrowDown, Package, ShieldCheck, FileText as FileTextIcon, Gift, Play, Film, Square } from 'lucide-react';
+import { ProductDetails, GeneratedContent, PageTone, UserSession, LandingPageRow, TemplateId, FormFieldConfig, TypographyConfig, UiTranslation, SiteConfig, Testimonial, VideoItem, Order } from './types';
+import { Loader2, LogOut, Sparkles, Star, ChevronLeft, ChevronRight, Save, ShoppingBag, ArrowRight, Trash2, Eye, UserPlus, LogIn, LayoutDashboard, Check, Image as ImageIcon, X, MonitorPlay, RefreshCcw, ArrowLeft, Settings, CreditCard, Link as LinkIcon, ListChecks, Pencil, Smartphone, Tablet, Monitor, Plus, MessageSquare, Images, Upload, Type, Truck, Flame, Zap, Globe, Banknote, MousePointerClick, Palette, Users, Copy, Target, MessageCircle, Code, Mail, Lock, Map, User, ArrowUp, ArrowDown, Package, ShieldCheck, FileText as FileTextIcon, Gift, Play, Film, Square, Send, Filter, Calendar } from 'lucide-react';
 
 // Declare Leaflet global
 declare global {
@@ -316,7 +316,7 @@ const ImagePickerModal = ({ isOpen, onClose, images, onSelect }: {
 
 export const App: React.FC = () => {
   const [view, setView] = useState<'home' | 'product_view' | 'thank_you_view' | 'admin' | 'preview'>('home');
-  const [adminSection, setAdminSection] = useState<'pages' | 'settings'>('pages');
+  const [adminSection, setAdminSection] = useState<'pages' | 'settings' | 'orders'>('pages');
   const [publicPages, setPublicPages] = useState<LandingPageRow[]>([]);
   const [adminPages, setAdminPages] = useState<LandingPageRow[]>([]);
   const [selectedPublicPage, setSelectedPublicPage] = useState<LandingPageRow | null>(null);
@@ -382,6 +382,15 @@ export const App: React.FC = () => {
   const presenceChannelRef = useRef<any>(null);
   const userGeoRef = useRef<Partial<OnlineUser>>({});
 
+  // Orders State
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [orderFilters, setOrderFilters] = useState({ date: '', productName: '' });
+  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [isResending, setIsResending] = useState(false);
+  const [resendStatus, setResendStatus] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
 
   const fetchPublicPages = useCallback(async () => {
     if (!supabase) return;
@@ -404,6 +413,81 @@ export const App: React.FC = () => {
     setIsLoadingPages(false);
   }, [session]);
 
+    const fetchOrders = useCallback(async () => {
+        if (!supabase) return;
+        setIsLoadingOrders(true);
+        setSelectedOrders(new Set()); // Reset selection on new fetch
+
+        let query = supabase.from('orders').select('*');
+
+        if (orderFilters.date) {
+            const startDate = `${orderFilters.date}T00:00:00.000Z`;
+            const endDate = `${orderFilters.date}T23:59:59.999Z`;
+            query = query.gte('created_at', startDate).lt('created_at', endDate);
+        }
+
+        if (orderFilters.productName.trim()) {
+            query = query.ilike('product_name', `%${orderFilters.productName.trim()}%`);
+        }
+
+        const { data, error } = await query.order('created_at', { ascending: false });
+
+        if (error) {
+            console.error("Error fetching orders:", error);
+            alert("Errore nel caricamento degli ordini: " + error.message);
+        } else {
+            // Map raw data to the Order type
+            const formattedData = data.map(d => ({ ...d, raw_data: d })) as Order[];
+            setOrders(formattedData);
+        }
+        setIsLoadingOrders(false);
+    }, [orderFilters]);
+
+    const handleResendWebhook = async () => {
+        if (!webhookUrl.trim()) {
+            alert("Per favore, inserisci un URL per il webhook.");
+            return;
+        }
+        if (selectedOrders.size === 0) {
+            alert("Nessun ordine selezionato.");
+            return;
+        }
+
+        setIsResending(true);
+        setResendStatus(null);
+        const ordersToSend = orders.filter(o => selectedOrders.has(o.id));
+
+        const promises = ordersToSend.map(order => {
+            const urlParams = new URLSearchParams();
+            // Utilizza raw_data per garantire che il payload sia identico all'originale
+            Object.entries(order.raw_data).forEach(([key, value]) => {
+                // Escludi i metadati di Supabase se presenti
+                if (key !== 'id' && key !== 'created_at') {
+                    urlParams.append(key, String(value));
+                }
+            });
+             urlParams.append('event_type', 'manual_resend'); // Aggiungi un flag per il reinvio
+
+            return fetch(webhookUrl, {
+                method: 'POST',
+                body: urlParams,
+                mode: 'no-cors', // Mantiene la compatibilità con il metodo originale
+            });
+        });
+
+        try {
+            await Promise.all(promises);
+            setResendStatus({ message: `${ordersToSend.length} ordini reinviati con successo.`, type: 'success' });
+        } catch (error) {
+            console.error("Webhook resend error:", error);
+            setResendStatus({ message: "Errore durante il reinvio. Controlla la console.", type: 'error' });
+        } finally {
+            setIsResending(false);
+            setSelectedOrders(new Set());
+        }
+    };
+
+
   const updateUserPresence = useCallback((pageUrl: string) => {
     if (presenceChannelRef.current && presenceChannelRef.current.state === 'joined') {
         const stateToTrack: Partial<OnlineUser> = {
@@ -421,9 +505,13 @@ export const App: React.FC = () => {
       fetchPublicPages();
     }
     if (view === 'admin' && session) {
-      fetchAllAdminPages();
+        if (adminSection === 'pages') {
+          fetchAllAdminPages();
+        } else if (adminSection === 'orders') {
+          fetchOrders();
+        }
     }
-  }, [view, session, fetchPublicPages, fetchAllAdminPages]);
+  }, [view, session, adminSection, fetchPublicPages, fetchAllAdminPages, fetchOrders]);
 
   // Effect for setting up auth, routing, and other initial configurations
   useEffect(() => {
@@ -934,9 +1022,9 @@ export const App: React.FC = () => {
           const blob = base64ToBlob(imageString); 
           if (!blob) return imageString; 
           const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
-// FIX: Convert blob to ArrayBuffer to avoid potential type conflicts with Supabase's expected Blob type.
-          const arrayBuffer = await blob.arrayBuffer();
-          const { data, error } = await supabase.storage.from('landing-images').upload(fileName, arrayBuffer, { contentType: blob.type || 'image/png', upsert: false }); 
+// FIX: The previous attempt to convert the blob to an ArrayBuffer was causing a type error.
+// Passing the blob object directly to the upload method is supported and resolves the issue.
+          const { data, error } = await supabase.storage.from('landing-images').upload(fileName, blob, { contentType: blob.type || 'image/png', upsert: false }); 
           if (error) { 
               console.error("Upload error:", error); 
               return imageString; 
@@ -1352,7 +1440,11 @@ export const App: React.FC = () => {
             <div className="flex items-center gap-6">
                 <div className="flex items-center gap-2 text-emerald-600 font-bold text-xl"><Sparkles className="w-6 h-6" /><span>Agdid Admin</span></div>
                 
-                <div className="hidden md:flex gap-1 bg-gray-200 p-1 rounded-lg border border-gray-300"><button onClick={() => setAdminSection('pages')} className={`px-3 py-1.5 rounded text-xs font-bold transition ${adminSection === 'pages' ? 'bg-white text-emerald-700 shadow' : 'text-slate-500 hover:text-slate-900'}`}>Generatore</button><button onClick={() => setAdminSection('settings')} className={`px-3 py-1.5 rounded text-xs font-bold transition ${adminSection === 'settings' ? 'bg-white text-emerald-700 shadow' : 'text-slate-500 hover:text-slate-900'}`}>Impostazioni Sito</button></div>
+                <div className="hidden md:flex gap-1 bg-gray-200 p-1 rounded-lg border border-gray-300">
+                    <button onClick={() => setAdminSection('pages')} className={`px-3 py-1.5 rounded text-xs font-bold transition ${adminSection === 'pages' ? 'bg-white text-emerald-700 shadow' : 'text-slate-500 hover:text-slate-900'}`}>Generatore</button>
+                    <button onClick={() => setAdminSection('orders')} className={`px-3 py-1.5 rounded text-xs font-bold transition ${adminSection === 'orders' ? 'bg-white text-emerald-700 shadow' : 'text-slate-500 hover:text-slate-900'}`}>Ordini</button>
+                    <button onClick={() => setAdminSection('settings')} className={`px-3 py-1.5 rounded text-xs font-bold transition ${adminSection === 'settings' ? 'bg-white text-emerald-700 shadow' : 'text-slate-500 hover:text-slate-900'}`}>Impostazioni</button>
+                </div>
             </div>
             <div className="flex items-center gap-4">
                 <button
@@ -1381,6 +1473,105 @@ export const App: React.FC = () => {
                         <div className="pt-4 border-t border-gray-200 flex justify-between items-center">
                             <button onClick={handleClearCache} className="bg-gray-200 hover:bg-gray-300 text-slate-700 font-bold py-3 px-6 rounded-xl transition flex items-center gap-2 text-sm"><RefreshCcw className="w-4 h-4"/> Pulisci Cache & Ricarica</button>
                             <button onClick={saveSiteSettings} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg transition flex items-center gap-2"><Save className="w-5 h-5" /> Salva Impostazioni</button>
+                        </div>
+                    </div>
+                </div>
+            ) : adminSection === 'orders' ? (
+                 <div className="animate-in fade-in slide-in-from-bottom-4">
+                    <div className="flex items-center justify-between mb-8">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-white p-3 rounded-xl border border-gray-200"><ShoppingBag className="w-8 h-8 text-emerald-600" /></div>
+                            <div>
+                                <h1 className="text-2xl font-bold text-slate-900">Gestione Ordini</h1>
+                                <p className="text-slate-600">Visualizza, filtra e gestisci gli ordini ricevuti.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden">
+                        <div className="p-4 border-b border-gray-200 bg-gray-50 flex flex-col md:flex-row gap-4 items-center">
+                            <div className="flex-1 w-full md:w-auto grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 flex items-center gap-1 mb-1"><Calendar className="w-3 h-3"/> Data</label>
+                                    <input type="date" value={orderFilters.date} onChange={e => setOrderFilters({...orderFilters, date: e.target.value})} className="w-full bg-white border border-gray-300 rounded-lg p-2 text-sm focus:ring-emerald-500"/>
+                                </div>
+                                <div>
+                                     <label className="text-xs font-bold text-slate-500 flex items-center gap-1 mb-1"><ShoppingBag className="w-3 h-3"/> Nome Prodotto</label>
+                                    <input type="text" value={orderFilters.productName} onChange={e => setOrderFilters({...orderFilters, productName: e.target.value})} placeholder="Filtra per prodotto..." className="w-full bg-white border border-gray-300 rounded-lg p-2 text-sm focus:ring-emerald-500"/>
+                                </div>
+                                <div className="flex items-end">
+                                    <button onClick={fetchOrders} className="w-full bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 hover:bg-emerald-700 transition"><Filter className="w-4 h-4"/> Applica Filtri</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-b border-gray-200">
+                             <div className="flex flex-col md:flex-row items-center gap-4">
+                                <div className="flex-grow w-full">
+                                    <label className="text-xs font-bold text-slate-500 flex items-center gap-1 mb-1"><Send className="w-3 h-3"/> Webhook URL per Reinvio</label>
+                                    <input type="url" value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)} placeholder="https://tuo-webhook.com/endpoint" className="w-full bg-white border border-gray-300 rounded-lg p-2 text-sm font-mono focus:ring-emerald-500"/>
+                                </div>
+                                <div className="w-full md:w-auto flex-shrink-0">
+                                     <button onClick={handleResendWebhook} disabled={isResending || selectedOrders.size === 0} className="w-full mt-5 bg-blue-600 text-white font-bold py-2 px-6 rounded-lg flex items-center justify-center gap-2 hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                                        {isResending ? <Loader2 className="w-4 h-4 animate-spin"/> : <Send className="w-4 h-4"/>}
+                                        Reinvia Selezionati ({selectedOrders.size})
+                                    </button>
+                                </div>
+                             </div>
+                             {resendStatus && (
+                                <div className={`mt-3 p-2 text-center text-xs rounded-md ${resendStatus.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                    {resendStatus.message}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="overflow-x-auto">
+                             <table className="w-full text-sm">
+                                <thead className="bg-gray-50 text-xs text-slate-500 uppercase tracking-wider">
+                                    <tr>
+                                        <th className="p-3 text-left w-12"><input type="checkbox" onChange={(e) => {
+                                            const newSelected = new Set<string>();
+                                            if (e.target.checked) {
+                                                orders.forEach(o => newSelected.add(o.id));
+                                            }
+                                            setSelectedOrders(newSelected);
+                                        }} checked={selectedOrders.size > 0 && selectedOrders.size === orders.length} className="w-4 h-4 accent-emerald-500" /></th>
+                                        <th className="p-3 text-left">Data</th>
+                                        <th className="p-3 text-left">Prodotto</th>
+                                        <th className="p-3 text-left">Cliente</th>
+                                        <th className="p-3 text-left">Telefono</th>
+                                        <th className="p-3 text-left">Indirizzo</th>
+                                        <th className="p-3 text-left">Totale</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                    {isLoadingOrders ? (
+                                        <tr><td colSpan={7} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin text-emerald-500 mx-auto"/></td></tr>
+                                    ) : orders.length === 0 ? (
+                                        <tr><td colSpan={7} className="p-8 text-center text-slate-500">Nessun ordine trovato con i filtri attuali.</td></tr>
+                                    ) : (
+                                        orders.map(order => (
+                                            <tr key={order.id} className={`transition-colors ${selectedOrders.has(order.id) ? 'bg-emerald-50' : 'hover:bg-gray-50'}`}>
+                                                <td className="p-3"><input type="checkbox" checked={selectedOrders.has(order.id)} onChange={() => {
+                                                    const newSelected = new Set(selectedOrders);
+                                                    if (newSelected.has(order.id)) {
+                                                        newSelected.delete(order.id);
+                                                    } else {
+                                                        newSelected.add(order.id);
+                                                    }
+                                                    setSelectedOrders(newSelected);
+                                                }} className="w-4 h-4 accent-emerald-500"/></td>
+                                                <td className="p-3 font-mono text-xs text-slate-600">{new Date(order.created_at).toLocaleString('it-IT')}</td>
+                                                <td className="p-3 font-bold text-slate-800">{order.product_name}</td>
+                                                <td className="p-3">{order.name}</td>
+                                                <td className="p-3">{order.phone}</td>
+                                                <td className="p-3 text-slate-600">{order.address}, {order.city}</td>
+                                                <td className="p-3 font-bold">{order.total_price}</td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>

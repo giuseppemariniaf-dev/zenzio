@@ -1,5 +1,6 @@
 
 
+
 export interface UserSession {
   id: string;
   email: string;
@@ -269,4 +270,27 @@ export interface LandingPageRow {
   // New columns for scripts
   custom_head_html?: string;
   custom_thankyou_html?: string;
+}
+
+export interface Order {
+  id: string; 
+  created_at: string;
+  product_name: string;
+  price: string;
+  total_price: string;
+  payment_method: string;
+  customer_ip: string;
+  shipping_insurance_selected: string;
+  shipping_insurance_cost: string;
+  gadget_selected: string;
+  gadget_cost: string;
+  name: string;
+  phone: string;
+  address: string;
+  city?: string;
+  cap?: string;
+  email?: string;
+  notes?: string;
+  // Aggiungiamo una proprietà per contenere tutti i dati grezzi per il reinvio
+  raw_data: { [key: string]: any };
 }
