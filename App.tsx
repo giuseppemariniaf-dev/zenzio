@@ -1,6 +1,9 @@
 
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+
+
+
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase, isSupabaseConfigured, base64ToBlob } from './services/supabaseClient';
 import { generateLandingPage, generateReviews, generateActionImages, translateLandingPage, getLanguageConfig } from './services/geminiService';
 import LandingPage, { ThankYouPage } from './components/LandingPage';
@@ -323,6 +326,7 @@ export const App: React.FC = () => {
   const [adminPages, setAdminPages] = useState<LandingPageRow[]>([]);
   const [selectedPublicPage, setSelectedPublicPage] = useState<LandingPageRow | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [orderProductFilter, setOrderProductFilter] = useState<string>('');
   
   const [session, setSession] = useState<UserSession | null>(null);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -947,17 +951,15 @@ export const App: React.FC = () => {
       setEditingMode('landing');
   };
 
+  // FIX: Corrected image upload logic. The `base64ToBlob` function now returns a standard `Blob` object, which is handled here and passed to the Supabase `upload` method, resolving the original type error.
   const uploadImageToStorage = async (imageString: string): Promise<string> => {
       if (!supabase || !imageString || !imageString.startsWith('data:')) return imageString; // Don't upload if it's not a base64 string
       try {
-          // FIX: The Blob object was causing type conflicts, likely due to multiple 'Blob' type definitions.
-          // Using the new base64ToBlob function which returns an ArrayBuffer directly to avoid this issue.
-          const parts = base64ToBlob(imageString);
-          if (!parts) return imageString; 
-          const { buffer, mime } = parts;
+          const blob = base64ToBlob(imageString);
+          if (!blob) return imageString;
           const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
           
-          const { data, error } = await supabase.storage.from('landing-images').upload(fileName, buffer, { contentType: mime || 'image/png', upsert: false }); 
+          const { data, error } = await supabase.storage.from('landing-images').upload(fileName, blob, { contentType: blob.type || 'image/png', upsert: false });
           if (error) { 
               console.error("Upload error:", error); 
               return imageString; 
@@ -1288,8 +1290,32 @@ export const App: React.FC = () => {
       }
   };
 
+  const uniqueOrderProducts = useMemo(() => {
+    if (!orders) return [];
+    const productNames = new Set(orders.map(order => order.product_name));
+    return Array.from(productNames);
+  }, [orders]);
+
+  const filteredOrders = useMemo(() => {
+    if (!orderProductFilter) {
+        return orders;
+    }
+    return orders.filter(order => order.product_name === orderProductFilter);
+  }, [orders, orderProductFilter]);
+
   // ... (Render logic) ...
   if (view === 'product_view' && selectedPublicPage) {
+      // FIX: Add a guard against null content, which causes a crash on public pages.
+      if (!selectedPublicPage.content) {
+        return (
+            <div className="min-h-screen flex items-center justify-center text-center p-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-red-600 mb-2">Errore nel Caricamento della Pagina</h1>
+                    <p className="text-slate-500">Il contenuto per questa pagina non è stato trovato o è corrotto. <br />Per favore, contatta l'amministratore.</p>
+                </div>
+            </div>
+        );
+      }
       // ... (Existing product view logic) ...
       const pageLang = selectedPublicPage.content.language || 'Italiano';
       const langConfig = getLanguageConfig(pageLang);
@@ -1325,6 +1351,17 @@ export const App: React.FC = () => {
 
   // ... (Thank you view logic) ...
   if (view === 'thank_you_view' && selectedPublicPage) {
+    // FIX: Add a guard against null content for the thank you page as well.
+    if (!selectedPublicPage.content) {
+        return (
+             <div className="min-h-screen flex items-center justify-center text-center p-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-red-600 mb-2">Errore nel Caricamento della Pagina di Ringraziamento</h1>
+                    <p className="text-slate-500">Il contenuto per questa pagina non è stato trovato o è corrotto. <br />Per favore, contatta l'amministratore.</p>
+                </div>
+            </div>
+        );
+    }
     const pageLang = selectedPublicPage.content.language || 'Italiano';
     const langConfig = getLanguageConfig(pageLang);
 
@@ -1421,6 +1458,24 @@ export const App: React.FC = () => {
                         </div>
                         <button onClick={fetchOrders} className="p-2 hover:bg-gray-200 rounded-lg text-slate-500 transition" title="Aggiorna lista"><RefreshCcw className="w-4 h-4"/></button>
                     </div>
+                     <div className="mb-4">
+                        <label htmlFor="product-filter" className="block text-sm font-medium text-slate-700 mb-1">
+                            Filtra per Prodotto
+                        </label>
+                        <select
+                            id="product-filter"
+                            value={orderProductFilter}
+                            onChange={(e) => setOrderProductFilter(e.target.value)}
+                            className="w-full max-w-xs bg-white border border-gray-300 rounded-lg p-2 text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                        >
+                            <option value="">Tutti i Prodotti</option>
+                            {uniqueOrderProducts.map(productName => (
+                                <option key={productName} value={productName}>
+                                    {productName}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
                      <div className="bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden">
                         <table className="w-full text-sm text-left text-slate-500">
                             <thead className="text-xs text-slate-700 uppercase bg-slate-50 border-b border-gray-200">
@@ -1435,8 +1490,8 @@ export const App: React.FC = () => {
                             <tbody>
                                 {isLoadingPages ? (
                                    <tr><td colSpan={5} className="text-center p-12"><Loader2 className="w-6 h-6 animate-spin mx-auto text-emerald-500"/></td></tr>
-                                ) : orders.length > 0 ? (
-                                    orders.map(order => (
+                                ) : filteredOrders.length > 0 ? (
+                                    filteredOrders.map(order => (
                                         <tr key={order.id} className="bg-white border-b hover:bg-slate-50">
                                             <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">{new Date(order.created_at).toLocaleString('it-IT')}</td>
                                             <td className="px-6 py-4">{order.product_name}</td>
@@ -1446,7 +1501,11 @@ export const App: React.FC = () => {
                                         </tr>
                                     ))
                                 ) : (
-                                    <tr><td colSpan={5} className="text-center p-12 text-slate-400">Nessun ordine trovato.</td></tr>
+                                    <tr>
+                                        <td colSpan={5} className="text-center p-12 text-slate-400">
+                                            {orderProductFilter ? `Nessun ordine trovato per "${orderProductFilter}"` : 'Nessun ordine trovato.'}
+                                        </td>
+                                    </tr>
                                 )}
                             </tbody>
                         </table>
