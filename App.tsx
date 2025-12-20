@@ -933,9 +933,10 @@ export const App: React.FC = () => {
       try { 
           const blob = base64ToBlob(imageString); 
           if (!blob) return imageString; 
-          const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.png`; 
-          // FIX: Cast blob to any to avoid type mismatch between DOM Blob and Supabase Blob types
-          const { data, error } = await supabase.storage.from('landing-images').upload(fileName, blob as any, { contentType: blob.type || 'image/png', upsert: false }); 
+          const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
+// FIX: Convert blob to ArrayBuffer to avoid potential type conflicts with Supabase's expected Blob type.
+          const arrayBuffer = await blob.arrayBuffer();
+          const { data, error } = await supabase.storage.from('landing-images').upload(fileName, arrayBuffer, { contentType: blob.type || 'image/png', upsert: false }); 
           if (error) { 
               console.error("Upload error:", error); 
               return imageString; 
@@ -1697,7 +1698,24 @@ export const App: React.FC = () => {
                                             <div className="space-y-3">
                                                 <div><label className="text-[10px] text-slate-500">Colore Bottone CTA</label><div className="grid grid-cols-4 gap-2 mt-1">{BUTTON_GRADIENTS.map(b => (<button key={b.label} onClick={() => updateContentField('buttonColor', b.class)} className={`p-1 rounded text-white text-[9px] border-2 ${generatedContent.buttonColor === b.class ? 'border-emerald-500' : 'border-transparent'}`}><div className={`${b.class} w-full h-5 rounded`}></div></button>))}</div></div>
                                                 <div className="grid grid-cols-2 gap-3">
-                                                    <div><label className="text-[10px] text-slate-500">Colore Prezzo (Hex)</label><input type="text" value={generatedContent.priceStyles?.color || ''} onChange={(e) => updatePriceStyles('color', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div>
+                                                    <div>
+                                                        <label className="text-[10px] text-slate-500">Colore Prezzo (Hex)</label>
+                                                        <div className="flex items-center bg-gray-50 border border-gray-300 rounded-lg focus-within:ring-2 focus-within:ring-emerald-500">
+                                                            <input
+                                                                type="color"
+                                                                value={generatedContent.priceStyles?.color || '#000000'}
+                                                                onChange={(e) => updatePriceStyles('color', e.target.value)}
+                                                                className="w-10 h-10 bg-transparent border-none cursor-pointer rounded-l-lg p-1"
+                                                            />
+                                                            <input
+                                                                type="text"
+                                                                value={generatedContent.priceStyles?.color || ''}
+                                                                onChange={(e) => updatePriceStyles('color', e.target.value)}
+                                                                className="w-full bg-transparent p-2 text-sm text-slate-900 outline-none"
+                                                                placeholder="#0ea5e9"
+                                                            />
+                                                        </div>
+                                                    </div>
                                                     <div><label className="text-[10px] text-slate-500">Dimensione Prezzo (px)</label><input type="number" value={generatedContent.priceStyles?.fontSize?.replace('px','') || ''} onChange={(e) => updatePriceStyles('fontSize', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div>
                                                 </div>
                                                 <div><label className="text-[10px] text-slate-500">Colore Sfondo Pagina (Hex)</label><input type="text" value={generatedContent.backgroundColor || ''} onChange={(e) => updateContentField('backgroundColor', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div>
