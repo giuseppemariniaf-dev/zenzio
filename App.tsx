@@ -1,13 +1,8 @@
-
-
-
-
-
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase, isSupabaseConfigured, base64ToBlob } from './services/supabaseClient';
 import { generateLandingPage, generateReviews, generateActionImages, translateLandingPage, getLanguageConfig } from './services/geminiService';
 import LandingPage, { ThankYouPage } from './components/LandingPage';
-import { ProductDetails, GeneratedContent, PageTone, UserSession, LandingPageRow, TemplateId, FormFieldConfig, TypographyConfig, UiTranslation, SiteConfig, Testimonial, VideoItem, Order } from './types';
+import { ProductDetails, GeneratedContent, PageTone, UserSession, LandingPageRow, TemplateId, FormFieldConfig, TypographyConfig, UiTranslation, SiteConfig, Testimonial, VideoItem } from './types';
 import { Loader2, LogOut, Sparkles, Star, ChevronLeft, ChevronRight, Save, ShoppingBag, ArrowRight, Trash2, Eye, UserPlus, LogIn, LayoutDashboard, Check, Image as ImageIcon, X, MonitorPlay, RefreshCcw, ArrowLeft, Settings, CreditCard, Link as LinkIcon, ListChecks, Pencil, Smartphone, Tablet, Monitor, Plus, MessageSquare, Images, Upload, Type, Truck, Flame, Zap, Globe, Banknote, MousePointerClick, Palette, Users, Copy, Target, MessageCircle, Code, Mail, Lock, Map, User, ArrowUp, ArrowDown, Package, ShieldCheck, FileText as FileTextIcon, Gift, Play, Film, Square } from 'lucide-react';
 
 // Declare Leaflet global
@@ -321,12 +316,10 @@ const ImagePickerModal = ({ isOpen, onClose, images, onSelect }: {
 
 export const App: React.FC = () => {
   const [view, setView] = useState<'home' | 'product_view' | 'thank_you_view' | 'admin' | 'preview'>('home');
-  const [adminSection, setAdminSection] = useState<'pages' | 'settings' | 'orders'>('pages');
+  const [adminSection, setAdminSection] = useState<'pages' | 'settings'>('pages');
   const [publicPages, setPublicPages] = useState<LandingPageRow[]>([]);
   const [adminPages, setAdminPages] = useState<LandingPageRow[]>([]);
   const [selectedPublicPage, setSelectedPublicPage] = useState<LandingPageRow | null>(null);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [orderProductFilter, setOrderProductFilter] = useState<string>('');
   
   const [session, setSession] = useState<UserSession | null>(null);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -411,21 +404,6 @@ export const App: React.FC = () => {
     setIsLoadingPages(false);
   }, [session]);
 
-  const fetchOrders = useCallback(async () => {
-    if (!supabase || !session) return;
-    setIsLoadingPages(true); // Reuse existing loading state
-    const { data, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
-    if (!error && data) {
-        setOrders(data as Order[]);
-    } else {
-        console.error("Failed to fetch orders:", error);
-        if (error?.code === '42P01') { // "undefined_table"
-            alert("La tabella 'orders' non è stata trovata. Creala nel tuo database Supabase per visualizzare gli ordini.");
-        }
-    }
-    setIsLoadingPages(false);
-  }, [session]);
-
   const updateUserPresence = useCallback((pageUrl: string) => {
     if (presenceChannelRef.current && presenceChannelRef.current.state === 'joined') {
         const stateToTrack: Partial<OnlineUser> = {
@@ -443,10 +421,9 @@ export const App: React.FC = () => {
       fetchPublicPages();
     }
     if (view === 'admin' && session) {
-      if(adminSection === 'pages') fetchAllAdminPages();
-      if(adminSection === 'orders') fetchOrders();
+      fetchAllAdminPages();
     }
-  }, [view, session, adminSection, fetchPublicPages, fetchAllAdminPages, fetchOrders]);
+  }, [view, session, fetchPublicPages, fetchAllAdminPages]);
 
   // Effect for setting up auth, routing, and other initial configurations
   useEffect(() => {
@@ -951,15 +928,15 @@ export const App: React.FC = () => {
       setEditingMode('landing');
   };
 
-  // FIX: Corrected image upload logic. The `base64ToBlob` function now returns a standard `Blob` object, which is handled here and passed to the Supabase `upload` method, resolving the original type error.
   const uploadImageToStorage = async (imageString: string): Promise<string> => {
       if (!supabase || !imageString || !imageString.startsWith('data:')) return imageString; // Don't upload if it's not a base64 string
-      try {
-          const blob = base64ToBlob(imageString);
-          if (!blob) return imageString;
+      try { 
+          const blob = base64ToBlob(imageString); 
+          if (!blob) return imageString; 
           const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
-          
-          const { data, error } = await supabase.storage.from('landing-images').upload(fileName, blob, { contentType: blob.type || 'image/png', upsert: false });
+// FIX: Convert blob to ArrayBuffer to avoid potential type conflicts with Supabase's expected Blob type.
+          const arrayBuffer = await blob.arrayBuffer();
+          const { data, error } = await supabase.storage.from('landing-images').upload(fileName, arrayBuffer, { contentType: blob.type || 'image/png', upsert: false }); 
           if (error) { 
               console.error("Upload error:", error); 
               return imageString; 
@@ -1290,32 +1267,8 @@ export const App: React.FC = () => {
       }
   };
 
-  const uniqueOrderProducts = useMemo(() => {
-    if (!orders) return [];
-    const productNames = new Set(orders.map(order => order.product_name));
-    return Array.from(productNames);
-  }, [orders]);
-
-  const filteredOrders = useMemo(() => {
-    if (!orderProductFilter) {
-        return orders;
-    }
-    return orders.filter(order => order.product_name === orderProductFilter);
-  }, [orders, orderProductFilter]);
-
   // ... (Render logic) ...
   if (view === 'product_view' && selectedPublicPage) {
-      // FIX: Add a guard against null content, which causes a crash on public pages.
-      if (!selectedPublicPage.content) {
-        return (
-            <div className="min-h-screen flex items-center justify-center text-center p-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-red-600 mb-2">Errore nel Caricamento della Pagina</h1>
-                    <p className="text-slate-500">Il contenuto per questa pagina non è stato trovato o è corrotto. <br />Per favore, contatta l'amministratore.</p>
-                </div>
-            </div>
-        );
-      }
       // ... (Existing product view logic) ...
       const pageLang = selectedPublicPage.content.language || 'Italiano';
       const langConfig = getLanguageConfig(pageLang);
@@ -1351,17 +1304,6 @@ export const App: React.FC = () => {
 
   // ... (Thank you view logic) ...
   if (view === 'thank_you_view' && selectedPublicPage) {
-    // FIX: Add a guard against null content for the thank you page as well.
-    if (!selectedPublicPage.content) {
-        return (
-             <div className="min-h-screen flex items-center justify-center text-center p-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-red-600 mb-2">Errore nel Caricamento della Pagina di Ringraziamento</h1>
-                    <p className="text-slate-500">Il contenuto per questa pagina non è stato trovato o è corrotto. <br />Per favore, contatta l'amministratore.</p>
-                </div>
-            </div>
-        );
-    }
     const pageLang = selectedPublicPage.content.language || 'Italiano';
     const langConfig = getLanguageConfig(pageLang);
 
@@ -1410,11 +1352,7 @@ export const App: React.FC = () => {
             <div className="flex items-center gap-6">
                 <div className="flex items-center gap-2 text-emerald-600 font-bold text-xl"><Sparkles className="w-6 h-6" /><span>Agdid Admin</span></div>
                 
-                <div className="hidden md:flex gap-1 bg-gray-200 p-1 rounded-lg border border-gray-300">
-                    <button onClick={() => setAdminSection('pages')} className={`px-3 py-1.5 rounded text-xs font-bold transition ${adminSection === 'pages' ? 'bg-white text-emerald-700 shadow' : 'text-slate-500 hover:text-slate-900'}`}>Generatore</button>
-                    <button onClick={() => setAdminSection('orders')} className={`px-3 py-1.5 rounded text-xs font-bold transition ${adminSection === 'orders' ? 'bg-white text-emerald-700 shadow' : 'text-slate-500 hover:text-slate-900'}`}>Lista Ordini</button>
-                    <button onClick={() => setAdminSection('settings')} className={`px-3 py-1.5 rounded text-xs font-bold transition ${adminSection === 'settings' ? 'bg-white text-emerald-700 shadow' : 'text-slate-500 hover:text-slate-900'}`}>Impostazioni Sito</button>
-                </div>
+                <div className="hidden md:flex gap-1 bg-gray-200 p-1 rounded-lg border border-gray-300"><button onClick={() => setAdminSection('pages')} className={`px-3 py-1.5 rounded text-xs font-bold transition ${adminSection === 'pages' ? 'bg-white text-emerald-700 shadow' : 'text-slate-500 hover:text-slate-900'}`}>Generatore</button><button onClick={() => setAdminSection('settings')} className={`px-3 py-1.5 rounded text-xs font-bold transition ${adminSection === 'settings' ? 'bg-white text-emerald-700 shadow' : 'text-slate-500 hover:text-slate-900'}`}>Impostazioni Sito</button></div>
             </div>
             <div className="flex items-center gap-4">
                 <button
@@ -1444,71 +1382,6 @@ export const App: React.FC = () => {
                             <button onClick={handleClearCache} className="bg-gray-200 hover:bg-gray-300 text-slate-700 font-bold py-3 px-6 rounded-xl transition flex items-center gap-2 text-sm"><RefreshCcw className="w-4 h-4"/> Pulisci Cache & Ricarica</button>
                             <button onClick={saveSiteSettings} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg transition flex items-center gap-2"><Save className="w-5 h-5" /> Salva Impostazioni</button>
                         </div>
-                    </div>
-                </div>
-            ) : adminSection === 'orders' ? (
-                <div className="animate-in fade-in slide-in-from-bottom-4">
-                    <div className="flex items-center justify-between mb-8">
-                        <div className="flex items-center gap-3">
-                            <div className="bg-gray-100 p-3 rounded-xl"><ListChecks className="w-8 h-8 text-emerald-600" /></div>
-                            <div>
-                                <h1 className="text-2xl font-bold text-slate-900">Lista Ordini</h1>
-                                <p className="text-slate-600">Visualizza gli ordini ricevuti in tempo reale.</p>
-                            </div>
-                        </div>
-                        <button onClick={fetchOrders} className="p-2 hover:bg-gray-200 rounded-lg text-slate-500 transition" title="Aggiorna lista"><RefreshCcw className="w-4 h-4"/></button>
-                    </div>
-                     <div className="mb-4">
-                        <label htmlFor="product-filter" className="block text-sm font-medium text-slate-700 mb-1">
-                            Filtra per Prodotto
-                        </label>
-                        <select
-                            id="product-filter"
-                            value={orderProductFilter}
-                            onChange={(e) => setOrderProductFilter(e.target.value)}
-                            className="w-full max-w-xs bg-white border border-gray-300 rounded-lg p-2 text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
-                        >
-                            <option value="">Tutti i Prodotti</option>
-                            {uniqueOrderProducts.map(productName => (
-                                <option key={productName} value={productName}>
-                                    {productName}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                     <div className="bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden">
-                        <table className="w-full text-sm text-left text-slate-500">
-                            <thead className="text-xs text-slate-700 uppercase bg-slate-50 border-b border-gray-200">
-                                <tr>
-                                    <th scope="col" className="px-6 py-3">Data Ordine</th>
-                                    <th scope="col" className="px-6 py-3">Prodotto</th>
-                                    <th scope="col" className="px-6 py-3">Cliente</th>
-                                    <th scope="col" className="px-6 py-3">Telefono</th>
-                                    <th scope="col" className="px-6 py-3 text-right">Prezzo Totale</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {isLoadingPages ? (
-                                   <tr><td colSpan={5} className="text-center p-12"><Loader2 className="w-6 h-6 animate-spin mx-auto text-emerald-500"/></td></tr>
-                                ) : filteredOrders.length > 0 ? (
-                                    filteredOrders.map(order => (
-                                        <tr key={order.id} className="bg-white border-b hover:bg-slate-50">
-                                            <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">{new Date(order.created_at).toLocaleString('it-IT')}</td>
-                                            <td className="px-6 py-4">{order.product_name}</td>
-                                            <td className="px-6 py-4">{order.form_data?.name || 'N/D'}</td>
-                                            <td className="px-6 py-4">{order.form_data?.phone || 'N/D'}</td>
-                                            <td className="px-6 py-4 text-right font-bold text-slate-800">{order.total_price}</td>
-                                        </tr>
-                                    ))
-                                ) : (
-                                    <tr>
-                                        <td colSpan={5} className="text-center p-12 text-slate-400">
-                                            {orderProductFilter ? `Nessun ordine trovato per "${orderProductFilter}"` : 'Nessun ordine trovato.'}
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
                     </div>
                 </div>
             ) : (
@@ -1681,8 +1554,7 @@ export const App: React.FC = () => {
                                                                 type="text" 
                                                                 value={generatedContent.gadgetConfig?.label || ''} 
                                                                 onChange={(e) => updateGadgetConfig('label', e.target.value)} 
-                                                                className="w-full bg-white border border-gray-300 rounded p-2 text-sm text-slate-900"
-                                                            />
+                                                                className="w-full bg-white border border-gray-300 rounded p-2 text-sm text-slate-900"/>
                                                         </div>
                                                         <div className="grid grid-cols-2 gap-2">
                                                             <div>
@@ -1708,100 +1580,337 @@ export const App: React.FC = () => {
                                                 )}
                                             </div>
                                         </div></div>
-                                        {/* Header */}
-                                        <div className="border-t border-gray-200 pt-4"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">3. Header & Galleria</label><div className="space-y-3"><div><label className="text-[10px] text-slate-500">Testo Barra Annunci</label><input type="text" value={generatedContent.announcementBarText} onChange={(e) => updateContentField('announcementBarText', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div><div><label className="text-[10px] text-slate-500">Headline (H1)</label><input type="text" value={generatedContent.headline} onChange={(e) => updateContentField('headline', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div><div><label className="text-[10px] text-slate-500">Sottotitolo (H2)</label><input type="text" value={generatedContent.subheadline} onChange={(e) => updateContentField('subheadline', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div><div><label className="text-[10px] text-slate-500">Testo CTA (Bottone)</label><input type="text" value={generatedContent.ctaText} onChange={(e) => updateContentField('ctaText', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div><div><label className="text-[10px] text-slate-500">Sottotitolo CTA</label><input type="text" value={generatedContent.ctaSubtext} onChange={(e) => updateContentField('ctaSubtext', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div><div className="grid grid-cols-2 gap-2"><div><label className="text-[10px] text-slate-500">Prompt Immagine Principale</label><input type="text" value={generatedContent.heroImagePrompt} onChange={(e) => updateContentField('heroImagePrompt', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div><div><label className="text-[10px] text-slate-500">Immagine Principale</label><div className="flex items-center gap-1"><input type="text" value={generatedContent.heroImageBase64 || ''} onChange={(e) => updateContentField('heroImageBase64', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded-l p-2 text-sm" placeholder="URL immagine"/><button onClick={() => updateContentField('heroImageBase64', (generatedContent.generatedImages && generatedContent.generatedImages.length > 0) ? generatedContent.generatedImages[0] : '')} className="p-2 bg-gray-200 rounded-r hover:bg-gray-300"><ImageIcon className="w-4 h-4 text-slate-600"/></button></div></div></div></div></div>
+                                        {/* Testo, Gallery, Benefits, Box, Features, Reviews, Form, Style, Typography, Advanced, Video */}
+                                        <div className="border-t border-gray-200 pt-4"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">3. Testo & Contenuto</label><div className="space-y-3"><div><label className="text-[10px] text-slate-500">Headline H1</label><textarea value={generatedContent.headline} onChange={(e) => updateContentField('headline', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm text-slate-900 h-20"/></div><div><label className="text-[10px] text-slate-500">Subheadline H2</label><textarea value={generatedContent.subheadline} onChange={(e) => updateContentField('subheadline', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm text-slate-900 h-20"/></div><div><label className="text-[10px] text-slate-500">Testo Barra Annunci</label><input type="text" value={generatedContent.announcementBarText} onChange={(e) => updateContentField('announcementBarText', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm text-slate-900"/></div><div><label className="text-[10px] text-slate-500">Testo Bottone CTA</label><input type="text" value={generatedContent.ctaText} onChange={(e) => updateContentField('ctaText', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm text-slate-900"/></div><div><label className="text-[10px] text-slate-500">Sottotesto Bottone</label><input type="text" value={generatedContent.ctaSubtext} onChange={(e) => updateContentField('ctaSubtext', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm text-slate-900"/></div></div></div>
                                         {/* Gallery */}
-                                        <div className="border-t border-gray-200 pt-4"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">4. Galleria Immagini</label><div><div className="flex flex-col gap-2"><div className="w-full border border-dashed border-gray-300 hover:border-emerald-500 rounded-lg p-3 text-center cursor-pointer transition bg-gray-50 flex items-center justify-center gap-2 group" onClick={() => galleryInputRef.current?.click()}><Upload className="w-4 h-4 text-gray-400 group-hover:text-emerald-500"/><span className="text-xs text-slate-500">Carica Immagini</span><input type="file" ref={galleryInputRef} multiple className="hidden" accept="image/*" onChange={handleGalleryUpload}/></div><div className="flex items-center gap-2"><input type="url" value={galleryImageUrl} onChange={(e) => setGalleryImageUrl(e.target.value)} className="flex-1 bg-gray-50 border border-gray-300 rounded-lg p-2 text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="Oppure incolla URL immagine..."/><button onClick={() => { addGalleryImageUrl(galleryImageUrl); setGalleryImageUrl(''); }} className="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition"><Plus className="w-4 h-4"/></button></div></div><div className="grid grid-cols-3 gap-2 mt-4">{generatedContent.generatedImages?.map((img, idx) => (<div key={idx} className="relative aspect-square rounded border border-gray-300 overflow-hidden group"><img src={img} alt={`Gallery ${idx}`} className="w-full h-full object-cover"/><div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1"><button onClick={() => updateContentField('heroImageBase64', img)} className="p-1.5 bg-white/20 rounded text-white" title="Imposta come principale"><Star className="w-3 h-3"/></button><button onClick={() => moveGalleryImage(idx, 'left')} className="p-1.5 bg-white/20 rounded text-white" title="Sposta a sinistra"><ArrowLeft className="w-3 h-3"/></button><button onClick={() => moveGalleryImage(idx, 'right')} className="p-1.5 bg-white/20 rounded text-white" title="Sposta a destra"><ArrowRight className="w-3 h-3"/></button><button onClick={() => removeGalleryImage(img)} className="p-1.5 bg-red-500/50 rounded text-white" title="Rimuovi"><Trash2 className="w-3 h-3"/></button></div></div>))}</div></div></div>
+                                        <div className="border-t border-gray-200 pt-4"><div className="flex justify-between items-center mb-2"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide">4. Galleria Immagini</label><span className="text-xs text-slate-500">{generatedContent.generatedImages?.length || 0} immagini</span></div><div className="flex flex-col gap-2"><div className="grid grid-cols-3 gap-2">{generatedContent.generatedImages?.map((img, i) => (<div key={i} className="relative aspect-square rounded border border-gray-300 overflow-hidden group bg-gray-100"><img src={img} alt={`Gallery ${i}`} className="w-full h-full object-cover"/><div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-1"><button onClick={() => moveGalleryImage(i, 'left')} className="p-1 text-white hover:bg-white/20 rounded"><ChevronLeft className="w-4 h-4"/></button><button onClick={() => removeGalleryImage(img)} className="p-1 text-white hover:bg-red-500 rounded"><X className="w-4 h-4"/></button><button onClick={() => moveGalleryImage(i, 'right')} className="p-1 text-white hover:bg-white/20 rounded"><ChevronRight className="w-4 h-4"/></button></div><button onClick={() => updateContentField('heroImageBase64', img)} className={`absolute top-1 left-1 p-1 text-xs rounded-full border transition ${generatedContent.heroImageBase64 === img ? 'bg-emerald-500 text-white border-emerald-300' : 'bg-white/50 backdrop-blur text-slate-700 border-slate-200'}`} title="Imposta come principale"><ImageIcon className="w-3 h-3"/></button></div>))}</div><div className="flex items-center gap-2"><input type="url" value={galleryImageUrl} onChange={e => setGalleryImageUrl(e.target.value)} placeholder="Aggiungi URL" className="flex-1 bg-gray-50 border border-gray-300 rounded-lg p-2 text-sm"/><button onClick={() => {addGalleryImageUrl(galleryImageUrl); setGalleryImageUrl('');}} className="p-2 bg-emerald-500 text-white rounded-lg"><Plus className="w-4 h-4"/></button></div><div className="w-full border border-dashed border-gray-300 rounded-lg p-3 text-center cursor-pointer bg-gray-50 text-xs text-slate-500 hover:border-emerald-500" onClick={() => galleryInputRef.current?.click()}>Carica Altre<input type="file" ref={galleryInputRef} multiple className="hidden" onChange={handleGalleryUpload}/></div><button onClick={handleGenerateMoreImages} disabled={isGeneratingImage} className="w-full text-xs py-2 bg-blue-50 text-blue-700 border border-blue-200 font-bold rounded-lg flex items-center justify-center gap-1 hover:bg-blue-100 transition">{isGeneratingImage ? <><Loader2 className="w-3 h-3 animate-spin"/> Generando...</> : <><Sparkles className="w-3 h-3"/> Genera con AI</>}</button></div></div>
                                         {/* Benefits */}
-                                        <div className="border-t border-gray-200 pt-4"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">5. Benefici</label><div className="space-y-2">{generatedContent.benefits?.map((b, i) => (<input key={i} type="text" value={b} onChange={(e) => updateBenefit(i, e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/>))}</div></div>
-                                        {/* Features */}
-                                        <div className="border-t border-gray-200 pt-4"><div className="flex justify-between items-center mb-2"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide">6. Features / Paragrafi</label><label className="flex items-center gap-2 cursor-pointer text-xs text-slate-600"><input type="checkbox" checked={generatedContent.showFeatureIcons || false} onChange={(e) => updateContentField('showFeatureIcons', e.target.checked)} className="w-4 h-4 accent-emerald-500"/>Mostra Icone</label></div><div className="space-y-4">{generatedContent.features?.map((f, i) => (<div key={i} className="bg-gray-50 p-3 rounded-lg border border-gray-200 space-y-2 relative"><div className="absolute top-2 right-2 flex flex-col gap-1"><button onClick={() => moveFeature(i, 'up')} className="p-1 bg-white/50 hover:bg-white rounded border border-gray-300"><ArrowUp className="w-3 h-3 text-slate-600"/></button><button onClick={() => moveFeature(i, 'down')} className="p-1 bg-white/50 hover:bg-white rounded border border-gray-300"><ArrowDown className="w-3 h-3 text-slate-600"/></button></div><input type="text" value={f.title} onChange={(e) => updateFeature(i, 'title', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm font-bold" placeholder="Titolo Feature"/><textarea value={f.description} onChange={(e) => updateFeature(i, 'description', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm h-20" placeholder="Descrizione Feature"/><div className="flex items-center gap-2"><input type="text" value={f.image || ''} onChange={(e) => updateFeature(i, 'image', e.target.value)} className="flex-1 bg-white border border-gray-300 rounded-l p-2 text-sm" placeholder="URL immagine (opzionale)"/><button onClick={() => setImagePicker({ isOpen: true, type: 'feature', index: i })} className="p-2 bg-gray-200 rounded-r hover:bg-gray-300"><ImageIcon className="w-4 h-4 text-slate-600"/></button></div></div>))}</div></div>
+                                        <div className="border-t border-gray-200 pt-4"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">5. Benefici (Lista puntata)</label><div className="space-y-2">{generatedContent.benefits.map((b, i) => (<div key={i} className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500 flex-shrink-0"/><input type="text" value={b} onChange={(e) => updateBenefit(i, e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-1.5 text-sm text-slate-900"/></div>))}</div></div>
                                         {/* Box Content */}
-                                        <div className="border-t border-gray-200 pt-4"><div className="flex justify-between items-center mb-2"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide flex items-center gap-1.5"><Package className="w-3 h-3"/> 7. Contenuto Pacco</label><input type="checkbox" checked={generatedContent.boxContent?.enabled || false} onChange={(e) => updateBoxContent('enabled', e.target.checked)} className="w-4 h-4 accent-emerald-500 rounded"/></div>{generatedContent.boxContent?.enabled && (<div className="space-y-2 bg-gray-50 p-3 rounded-lg border border-gray-200 animate-in fade-in slide-in-from-top-1"><input type="text" value={generatedContent.boxContent?.title || ''} onChange={(e) => updateBoxContent('title', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm font-bold" placeholder="Titolo Sezione"/><div className="space-y-1">{generatedContent.boxContent?.items.map((item, i) => (<input key={i} type="text" value={item} onChange={(e) => updateBoxContent('items', generatedContent.boxContent?.items.map((it, idx) => idx === i ? e.target.value : it) || [])} className="w-full bg-white border border-gray-300 rounded p-2 text-sm"/>))}</div><div className="flex items-center gap-2 pt-2 border-t border-gray-200 mt-2"><input type="text" value={generatedContent.boxContent?.image || ''} onChange={(e) => updateBoxContent('image', e.target.value)} className="flex-1 bg-white border border-gray-300 rounded-l p-2 text-sm" placeholder="URL immagine prodotto/pacco"/><input type="file" ref={boxImageInputRef} className="hidden" accept="image/*" onChange={handleBoxImageUpload}/><button onClick={() => boxImageInputRef.current?.click()} className="p-2 bg-gray-200 hover:bg-gray-300"><Upload className="w-4 h-4 text-slate-600"/></button><button onClick={() => setImagePicker({isOpen: true, type: 'box', index: null})} className="p-2 bg-gray-200 rounded-r hover:bg-gray-300"><ImageIcon className="w-4 h-4 text-slate-600"/></button></div></div>)}</div>
-                                        {/* Video Section */}
-                                        <div className="border-t border-gray-200 pt-4"><div className="flex justify-between items-center mb-2"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide flex items-center gap-1.5"><Film className="w-3 h-3"/> 8. Sezione Video</label><input type="checkbox" checked={generatedContent.videoConfig?.enabled || false} onChange={(e) => updateVideoConfig('enabled', e.target.checked)} className="w-4 h-4 accent-emerald-500 rounded"/></div>{generatedContent.videoConfig?.enabled && (<div className="space-y-2 bg-gray-50 p-3 rounded-lg border border-gray-200 animate-in fade-in slide-in-from-top-1"><input type="text" value={generatedContent.videoConfig?.title || ''} onChange={(e) => updateVideoConfig('title', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm font-bold" placeholder="Titolo Sezione (es. Guardalo in Azione)"/><div className="space-y-2">{generatedContent.videoConfig?.videos.map((video, idx) => (<div key={video.id} className="flex items-center gap-2 group"><input type="text" value={video.url} readOnly className="flex-1 bg-white border border-gray-300 rounded p-1 text-xs" /><button onClick={() => moveVideo(idx, 'up')} className="p-1 opacity-0 group-hover:opacity-100"><ArrowUp className="w-3 h-3"/></button><button onClick={() => moveVideo(idx, 'down')} className="p-1 opacity-0 group-hover:opacity-100"><ArrowDown className="w-3 h-3"/></button><button onClick={() => removeVideo(video.id)} className="p-1"><Trash2 className="w-3 h-3 text-red-500"/></button></div>))}<div className="flex items-center gap-2 pt-2 border-t border-gray-200 mt-2"><input type="url" value={newVideoUrl} onChange={(e) => setNewVideoUrl(e.target.value)} className="flex-1 bg-white border border-gray-300 rounded-lg p-2 text-sm" placeholder="URL Video (.mp4, .webm...)"/><button onClick={addVideo} className="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition"><Plus className="w-4 h-4"/></button></div></div></div>)}</div>
-                                        {/* Testimonials */}
-                                        <div className="border-t border-gray-200 pt-4"><div className="flex justify-between items-center mb-2"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide">9. Recensioni</label><div className="flex items-center gap-2"><button onClick={addTestimonial} className="p-1 bg-gray-200 rounded hover:bg-gray-300"><Plus className="w-3 h-3 text-slate-600"/></button><button onClick={handleGenerateMoreReviews} disabled={isGeneratingReviews} className="text-xs font-bold text-emerald-600 hover:text-emerald-800 transition flex items-center gap-1">{isGeneratingReviews ? <Loader2 className="w-3 h-3 animate-spin"/> : <Sparkles className="w-3 h-3"/>}Rigenera</button></div></div><div><label className="text-[10px] text-slate-500">Posizione (0 = in alto, {generatedContent.features.length} = in fondo)</label><input type="range" min="0" max={generatedContent.features.length} value={generatedContent.reviewsPosition === undefined ? generatedContent.features.length : generatedContent.reviewsPosition} onChange={(e) => updateContentField('reviewsPosition', parseInt(e.target.value))} className="w-full h-1.5 accent-emerald-500 bg-gray-200 rounded-lg appearance-none cursor-pointer"/></div><div className="space-y-3 mt-2">{generatedContent.testimonials?.map((t, i) => (<div key={i} className="bg-gray-50 p-3 rounded-lg border border-gray-200 space-y-2"><div className="flex justify-between items-start"><div className="flex-1 space-y-2"><input type="text" value={t.name} onChange={(e) => updateTestimonial(i, 'name', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm font-bold" placeholder="Nome"/><input type="text" value={t.title || ''} onChange={(e) => updateTestimonial(i, 'title', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm" placeholder="Titolo Recensione"/></div><button onClick={() => removeTestimonial(i)} className="p-1 ml-2"><Trash2 className="w-3 h-3 text-red-500"/></button></div><textarea value={t.text} onChange={(e) => updateTestimonial(i, 'text', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm h-20" placeholder="Testo recensione"/><div className="grid grid-cols-2 gap-2"><input type="text" value={t.role} onChange={(e) => updateTestimonial(i, 'role', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm" placeholder="Ruolo"/><div className="flex items-center gap-1 bg-white border border-gray-300 rounded px-2"><Star className="w-3 h-3 text-yellow-400"/><input type="number" min="1" max="5" value={t.rating} onChange={(e) => updateTestimonial(i, 'rating', parseInt(e.target.value))} className="w-full text-sm outline-none"/></div></div><div className="text-[10px] font-bold text-slate-500 mb-1">Immagini Recensione</div><div className="grid grid-cols-4 gap-2">{t.images?.map((img, imgIdx) => (<div key={imgIdx} className="relative group aspect-square"><img src={img} className="w-full h-full object-cover rounded"/><button onClick={() => removeReviewImage(i, imgIdx)} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 text-white flex items-center justify-center"><Trash2 className="w-4 h-4"/></button></div>))}<label className="aspect-square flex items-center justify-center border-2 border-dashed border-gray-300 rounded cursor-pointer hover:bg-gray-100"><input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleReviewGalleryUpload(i, e)}/><Plus className="w-5 h-5 text-gray-400"/></label></div></div>))}</div></div>
-                                        {/* Bottom CTA */}
-                                        <div className="border-t border-gray-200 pt-4"><div className="flex justify-between items-center mb-2"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide flex items-center gap-1.5"><Square className="w-3 h-3"/> 10. Sezione CTA Finale</label><input type="checkbox" checked={generatedContent.bottomCtaConfig?.enabled !== false} onChange={(e) => updateBottomCtaConfig('enabled', e.target.checked)} className="w-4 h-4 accent-emerald-500 rounded"/></div>{generatedContent.bottomCtaConfig?.enabled !== false && (<div className="space-y-2 bg-gray-50 p-3 rounded-lg border border-gray-200 animate-in fade-in slide-in-from-top-1"><div><label className="text-[10px] text-slate-500">Headline</label><input type="text" value={generatedContent.bottomCtaConfig?.headline || ''} onChange={(e) => updateBottomCtaConfig('headline', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm"/></div><div><label className="text-[10px] text-slate-500">Sub-headline</label><input type="text" value={generatedContent.bottomCtaConfig?.subheadline || ''} onChange={(e) => updateBottomCtaConfig('subheadline', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm"/></div></div>)}</div>
-                                        {/* Form */}
-                                        <div className="border-t border-gray-200 pt-4"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">11. Formulario</label><div className="space-y-2"><div><label className="text-[10px] text-slate-500">Webhook URL</label><input type="url" value={generatedContent.webhookUrl} onChange={(e) => updateContentField('webhookUrl', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm" placeholder="https://"/></div><div className="space-y-2">{generatedContent.formConfiguration?.map((f, i) => (<div key={i} className="flex items-center gap-2 p-2 bg-gray-50 rounded border border-gray-200"><input type="text" value={f.label} onChange={(e) => updateFormConfig(i, 'label', e.target.value)} className="flex-1 bg-white border border-gray-300 rounded p-1 text-xs"/><label className="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" checked={f.enabled} onChange={(e) => updateFormConfig(i, 'enabled', e.target.checked)} className="w-3 h-3 accent-emerald-500"/>On</label><label className="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" checked={f.required} onChange={(e) => updateFormConfig(i, 'required', e.target.checked)} className="w-3 h-3 accent-emerald-500"/>Req</label></div>))}</div></div></div>
-                                        {/* Pixel/Scripts */}
-                                        <div className="border-t border-gray-200 pt-4"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">12. Pixel / Script</label><div className="space-y-3"><div><label className="text-[10px] text-slate-500 flex items-center gap-1"><Code className="w-3 h-3"/> HTML Landing Page (<span className="font-mono text-red-500">{'<head>'}</span>)</label><textarea value={generatedContent.metaLandingHtml} onChange={(e) => updateContentField('metaLandingHtml', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-xs font-mono h-24" placeholder="<script>..."/></div><div><label className="text-[10px] text-slate-500 flex items-center gap-1"><Code className="w-3 h-3"/> HTML Thank You Page (<span className="font-mono text-red-500">{'<head>'}</span>)</label><textarea value={generatedContent.metaThankYouHtml} onChange={(e) => updateContentField('metaThankYouHtml', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-xs font-mono h-24" placeholder="<script>..."/></div></div></div>
-                                    </div>
-                                    ) : (
-                                        <div className="space-y-6 animate-in fade-in">
-                                            {/* Thank You Page Editor */}
-                                            <p className="text-xs text-center bg-purple-50 text-purple-800 p-3 rounded-lg border border-purple-200">Stai modificando la pagina di ringraziamento. I testi vengono ereditati dalla pagina principale ma possono essere sovrascritti qui. Usa <code className="bg-purple-200 text-purple-900 px-1 rounded">{'{name}'}</code> e <code className="bg-purple-200 text-purple-900 px-1 rounded">{'{phone}'}</code> per personalizzare.</p>
-                                            <div><label className="text-sm font-bold text-slate-700">Titolo (H1)</label><input type="text" value={generatedThankYouContent?.headline || ''} onChange={(e) => updateContentField('headline', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm mt-1"/></div>
-                                            <div><label className="text-sm font-bold text-slate-700">Messaggio di Conferma</label><textarea value={generatedThankYouContent?.subheadline || ''} onChange={(e) => updateContentField('subheadline', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm mt-1 h-24"/></div>
-                                            <div>
-                                                <label className="text-sm font-bold text-slate-700">Immagine Principale (Opzionale)</label>
-                                                <div className="flex items-center gap-2 mt-1">
-                                                     <input type="text" value={generatedThankYouContent?.heroImageBase64 || ''} onChange={(e) => updateContentField('heroImageBase64', e.target.value)} className="flex-1 bg-gray-50 border border-gray-300 rounded-l p-2 text-sm" placeholder="URL immagine"/>
-                                                     <input type="file" ref={tyImageInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, true)} />
-                                                     <button onClick={() => tyImageInputRef.current?.click()} className="p-2 bg-gray-200 hover:bg-gray-300"><Upload className="w-4 h-4 text-slate-600"/></button>
-                                                     <button onClick={() => setImagePicker({isOpen: true, type: 'thankyou', index: null})} className="p-2 bg-gray-200 rounded-r hover:bg-gray-300"><ImageIcon className="w-4 h-4 text-slate-600"/></button>
+                                        <div className="border-t border-gray-200 pt-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide flex items-center gap-2"><Package className="w-4 h-4"/> Box Contenuto</label>
+                                                <input type="checkbox" checked={generatedContent.boxContent?.enabled || false} onChange={e => updateBoxContent('enabled', e.target.checked)} className="w-4 h-4 accent-emerald-500"/>
+                                            </div>
+                                            {generatedContent.boxContent?.enabled && (
+                                                <div className="space-y-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                                    <div>
+                                                        <label className="text-[10px] text-slate-500">Titolo (es. "Cosa Ricevi")</label>
+                                                        <input type="text" value={generatedContent.boxContent.title} onChange={e => updateBoxContent('title', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] text-slate-500">Elementi della lista</label>
+                                                        <textarea value={(generatedContent.boxContent.items || []).join('\n')} onChange={e => updateBoxContent('items', e.target.value.split('\n'))} className="w-full bg-white border border-gray-300 rounded p-2 text-sm h-24" placeholder="Un elemento per riga..."/>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] text-slate-500">Immagine (Opzionale)</label>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-12 h-12 bg-white border rounded flex-shrink-0">
+                                                                {generatedContent.boxContent.image && <img src={generatedContent.boxContent.image} className="w-full h-full object-contain"/>}
+                                                            </div>
+                                                            <div className="flex-1 flex gap-1">
+                                                                <button onClick={() => boxImageInputRef.current?.click()} className="text-xs bg-white border border-gray-300 rounded p-1.5 w-full hover:bg-gray-50">Carica</button>
+                                                                <button onClick={() => setImagePicker({isOpen: true, type: 'box', index: null})} className="text-xs bg-white border border-gray-300 rounded p-1.5 w-full hover:bg-gray-50">Galleria</button>
+                                                                <button onClick={() => updateBoxContent('image', '')} className="text-xs bg-red-50 text-red-700 border border-red-200 rounded p-1.5 hover:bg-red-100"><Trash2 className="w-3 h-3"/></button>
+                                                                <input type="file" ref={boxImageInputRef} className="hidden" onChange={handleBoxImageUpload} accept="image/*" />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {/* Features */}
+                                        <div className="border-t border-gray-200 pt-4">
+                                            <label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">6. Paragrafi Features</label>
+                                            <div className="flex items-center gap-2 mb-2"><label className="text-xs flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={generatedContent.showFeatureIcons || false} onChange={(e) => updateContentField('showFeatureIcons', e.target.checked)} className="w-4 h-4 accent-emerald-500 rounded"/>Mostra Icone</label></div>
+                                            <div className="space-y-4">
+                                                {generatedContent.features.map((f, i) => (
+                                                    <div key={i} className="bg-gray-50 p-3 rounded-lg border border-gray-200 relative group">
+                                                        <div className="absolute top-1 right-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                                                            <button onClick={() => moveFeature(i, 'up')} disabled={i === 0} className="p-1 bg-white/50 backdrop-blur rounded-full text-slate-600 hover:bg-white disabled:opacity-30"><ArrowUp className="w-3 h-3"/></button>
+                                                            <button onClick={() => moveFeature(i, 'down')} disabled={i === generatedContent.features.length-1} className="p-1 bg-white/50 backdrop-blur rounded-full text-slate-600 hover:bg-white disabled:opacity-30"><ArrowDown className="w-3 h-3"/></button>
+                                                        </div>
+                                                        <label className="text-[10px] text-slate-500">Titolo {i+1}</label>
+                                                        <input type="text" value={f.title} onChange={(e) => updateFeature(i, 'title', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm"/>
+                                                        <label className="text-[10px] text-slate-500 mt-2 block">Descrizione {i+1}</label>
+                                                        <textarea value={f.description} onChange={(e) => updateFeature(i, 'description', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm h-24"/>
+                                                        <div className="flex items-center justify-between mt-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-12 h-12 bg-white border rounded flex-shrink-0">{f.image && <img src={f.image} className="w-full h-full object-cover"/>}</div>
+                                                                <div className="flex gap-1">
+                                                                    <button onClick={() => { (document.getElementById(`feature-img-${i}`) as HTMLInputElement)?.click(); }} className="text-xs bg-white border border-gray-300 rounded px-2 py-1 hover:bg-gray-50">Carica</button>
+                                                                    <button onClick={() => setImagePicker({isOpen: true, type: 'feature', index: i})} className="text-xs bg-white border border-gray-300 rounded px-2 py-1 hover:bg-gray-50">Galleria</button>
+                                                                    <button onClick={() => updateFeature(i, 'image', '')} className="text-xs bg-red-50 text-red-700 border border-red-200 p-1.5 rounded hover:bg-red-100"><Trash2 className="w-3 h-3"/></button>
+                                                                    <input type="file" id={`feature-img-${i}`} className="hidden" accept="image/*" onChange={(e) => updateFeature(i, 'image', e.target.files?.[0] ? URL.createObjectURL(e.target.files[0]) : '')} />
+                                                                </div>
+                                                            </div>
+                                                            <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-600"><input type="checkbox" checked={f.showCta || false} onChange={(e) => updateFeature(i, 'showCta', e.target.checked)} className="w-4 h-4 accent-emerald-500"/>Mostra CTA</label>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        {/* Reviews */}
+                                        <div className="border-t border-gray-200 pt-4"><div className="flex justify-between items-center mb-2"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide">7. Recensioni</label><div className="flex gap-2"><button onClick={handleGenerateMoreReviews} disabled={isGeneratingReviews} className="text-xs bg-blue-50 border border-blue-200 text-blue-700 font-bold px-2 py-1 rounded-md hover:bg-blue-100">{isGeneratingReviews ? <Loader2 className="w-3 h-3 animate-spin"/> : <Sparkles className="w-3 h-3"/>}</button><button onClick={addTestimonial} className="text-xs bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold px-2 py-1 rounded-md hover:bg-emerald-100"><Plus className="w-3 h-3"/></button></div></div><div><label className="text-[10px] text-slate-500">Inserisci dopo paragrafo #</label><input type="number" min="0" max={generatedContent.features.length} value={generatedContent.reviewsPosition === undefined ? generatedContent.features.length : generatedContent.reviewsPosition} onChange={(e) => updateContentField('reviewsPosition', e.target.value === '' ? undefined : parseInt(e.target.value))} className="w-full bg-gray-50 border border-gray-300 rounded p-1.5 text-sm"/></div><div className="space-y-4 mt-2">{generatedContent.testimonials?.map((t, i) => (<div key={i} className="bg-gray-50 p-3 rounded-lg border border-gray-200 relative group"><button onClick={() => removeTestimonial(i)} className="absolute top-1 right-1 p-1 text-red-500 hover:bg-red-100 rounded-full opacity-0 group-hover:opacity-100 transition"><X className="w-3 h-3"/></button><div className="grid grid-cols-2 gap-2"><input type="text" value={t.name} onChange={e => updateTestimonial(i, 'name', e.target.value)} placeholder="Nome" className="bg-white border rounded p-1.5 text-xs col-span-1"/><input type="text" value={t.title} onChange={e => updateTestimonial(i, 'title', e.target.value)} placeholder="Titolo" className="bg-white border rounded p-1.5 text-xs col-span-1"/></div><textarea value={t.text} onChange={e => updateTestimonial(i, 'text', e.target.value)} placeholder="Testo recensione" className="w-full bg-white border rounded p-1.5 text-xs mt-2 h-16"/>
+                                        <div className="mt-2">
+                                            <label className="text-[10px] text-slate-500 mb-1 block">Immagini Recensione</label>
+                                            <div className="flex flex-wrap gap-2 items-start">
+                                                {/* Main Image */}
+                                                <div className="relative w-16 h-16 bg-white border rounded flex-shrink-0 group/img">
+                                                     {t.image ? <img src={t.image} className="w-full h-full object-cover rounded"/> : <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageIcon className="w-6 h-6"/></div>}
+                                                     {t.image && <button onClick={() => updateTestimonial(i, 'image', '')} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/img:opacity-100 transition"><X className="w-3 h-3"/></button>}
+                                                </div>
+                                                {/* Gallery Images */}
+                                                {t.images?.map((img, imgIdx) => (
+                                                    <div key={imgIdx} className="relative w-16 h-16 bg-white border rounded flex-shrink-0 group/img">
+                                                        <img src={img} className="w-full h-full object-cover rounded" />
+                                                        <button onClick={() => removeReviewImage(i, imgIdx)} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/img:opacity-100 transition"><X className="w-3 h-3"/></button>
+                                                    </div>
+                                                ))}
+                                                {/* Add Button */}
+                                                 <div className="flex flex-col gap-1">
+                                                    <button onClick={() => (document.getElementById(`review-gallery-img-${i}`) as HTMLInputElement)?.click()} className="w-16 h-16 bg-white border border-dashed border-gray-300 rounded flex flex-col items-center justify-center text-slate-400 hover:border-emerald-500 hover:text-emerald-500 transition">
+                                                        <Plus className="w-5 h-5"/>
+                                                        <span className="text-[9px]">Add</span>
+                                                    </button>
+                                                    <button onClick={() => setImagePicker({isOpen: true, type: 'testimonial_gallery', index: i})} className="text-[10px] text-blue-600 hover:underline">Galleria</button>
+                                                    <input type="file" id={`review-gallery-img-${i}`} className="hidden" accept="image/*" multiple onChange={(e) => handleReviewGalleryUpload(i, e)} />
                                                 </div>
                                             </div>
-                                            <div><label className="block text-sm font-bold text-slate-700 mt-4 mb-2">Stile & Colori</label><div className="bg-gray-50 p-3 rounded-lg border border-gray-200"><label className="text-xs text-slate-500">Colore Sfondo Pagina</label><div className="flex items-center gap-2"><input type="color" value={generatedThankYouContent?.backgroundColor || '#f8fafc'} onChange={(e) => updateContentField('backgroundColor', e.target.value)} className="w-8 h-8 p-0 border-0 rounded cursor-pointer"/><input type="text" value={generatedThankYouContent?.backgroundColor || '#f8fafc'} onChange={(e) => updateContentField('backgroundColor', e.target.value)} className="flex-1 bg-white border border-gray-300 rounded px-2 py-1 text-xs"/></div></div></div>
                                         </div>
+                                        <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200">
+                                            <div className="flex items-center gap-1">
+                                                <input type="number" min="1" max="5" value={t.rating || 5} onChange={e => updateTestimonial(i, 'rating', parseInt(e.target.value))} className="w-12 bg-white border rounded p-1.5 text-xs"/>
+                                                <Star className="w-3 h-3 text-yellow-400 fill-current"/>
+                                            </div>
+                                             {/* URL Input */}
+                                            <div className="flex items-center gap-1 w-1/2">
+                                                <input type="url" placeholder="URL immagine..." className="flex-1 bg-white border rounded p-1.5 text-[10px]" value={reviewUrlInputs[i] ?? ''} onChange={(e) => handleReviewUrlChange(i, e.target.value)} />
+                                                <button type="button" onClick={() => handleApplyReviewUrl(i)} className="text-[10px] bg-white border border-gray-300 rounded px-2 py-1 hover:bg-gray-50">Set Main</button>
+                                            </div>
+                                        </div>
+                                        </div>))}</div></div>
+                                        {/* Form */}
+                                        <div className="border-t border-gray-200 pt-4"><label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">8. Form Contatti</label><div><label className="text-[10px] text-slate-500">Webhook URL</label><input type="url" value={generatedContent.webhookUrl || ''} onChange={(e) => updateContentField('webhookUrl', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm" placeholder="https://"/></div><div className="space-y-2 mt-2">{generatedContent.formConfiguration?.map((field, i) => (<div key={i} className="flex items-center justify-between p-2 bg-gray-50 rounded border"><div className="flex items-center gap-2"><input type="text" value={field.label} onChange={e => updateFormConfig(i, 'label', e.target.value)} className="bg-white border rounded p-1 text-xs"/><select value={field.type} onChange={e => updateFormConfig(i, 'type', e.target.value)} className="bg-white border rounded p-1 text-xs"><option value="text">Testo</option><option value="tel">Tel</option><option value="email">Email</option><option value="textarea">Area Testo</option></select></div><div className="flex items-center gap-3"><label className="text-xs flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={field.required} onChange={e => updateFormConfig(i, 'required', e.target.checked)} disabled={!field.enabled} className="w-3 h-3 accent-emerald-500"/>Obbl.</label><label className="text-xs flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={field.enabled} onChange={e => updateFormConfig(i, 'enabled', e.target.checked)} className="w-3 h-3 accent-emerald-500"/>Attivo</label></div></div>))}</div></div>
+                                        {/* Style */}
+                                        <div className="border-t border-gray-200 pt-4">
+                                            <label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">9. Stile & Colori</label>
+                                            <div className="space-y-3">
+                                                <div><label className="text-[10px] text-slate-500">Colore Bottone CTA</label><div className="grid grid-cols-4 gap-2 mt-1">{BUTTON_GRADIENTS.map(b => (<button key={b.label} onClick={() => updateContentField('buttonColor', b.class)} className={`p-1 rounded text-white text-[9px] border-2 ${generatedContent.buttonColor === b.class ? 'border-emerald-500' : 'border-transparent'}`}><div className={`${b.class} w-full h-5 rounded`}></div></button>))}</div></div>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="text-[10px] text-slate-500">Colore Prezzo (Hex)</label>
+                                                        <div className="flex items-center bg-gray-50 border border-gray-300 rounded-lg focus-within:ring-2 focus-within:ring-emerald-500">
+                                                            <input
+                                                                type="color"
+                                                                value={generatedContent.priceStyles?.color || '#000000'}
+                                                                onChange={(e) => updatePriceStyles('color', e.target.value)}
+                                                                className="w-10 h-10 bg-transparent border-none cursor-pointer rounded-l-lg p-1"
+                                                            />
+                                                            <input
+                                                                type="text"
+                                                                value={generatedContent.priceStyles?.color || ''}
+                                                                onChange={(e) => updatePriceStyles('color', e.target.value)}
+                                                                className="w-full bg-transparent p-2 text-sm text-slate-900 outline-none"
+                                                                placeholder="#0ea5e9"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div><label className="text-[10px] text-slate-500">Dimensione Prezzo (px)</label><input type="number" value={generatedContent.priceStyles?.fontSize?.replace('px','') || ''} onChange={(e) => updatePriceStyles('fontSize', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div>
+                                                </div>
+                                                <div><label className="text-[10px] text-slate-500">Colore Sfondo Pagina (Hex)</label><input type="text" value={generatedContent.backgroundColor || ''} onChange={(e) => updateContentField('backgroundColor', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div>
+                                            </div>
+                                        </div>
+                                        {/* Typography */}
+                                        <div className="border-t border-gray-200 pt-4">
+                                            <label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">10. Tipografia</label>
+                                            <div className="space-y-3">
+                                                <div><label className="text-[10px] text-slate-500">Font Famiglia</label><select value={generatedContent.typography?.fontFamily} onChange={(e) => updateTypography('fontFamily', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"><option value="sans">Sans-serif</option><option value="serif">Serif</option><option value="mono">Mono</option></select></div>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    <div><label className="text-[10px] text-slate-500">H1</label><select value={generatedContent.typography?.h1Size} onChange={(e) => updateTypography('h1Size', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"><option value="sm">SM</option><option value="md">MD</option><option value="lg">LG</option><option value="xl">XL</option><option value="2xl">2XL</option></select></div>
+                                                    <div><label className="text-[10px] text-slate-500">H2</label><select value={generatedContent.typography?.h2Size} onChange={(e) => updateTypography('h2Size', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"><option value="sm">SM</option><option value="md">MD</option><option value="lg">LG</option><option value="xl">XL</option></select></div>
+                                                    <div><label className="text-[10px] text-slate-500">Body</label><select value={generatedContent.typography?.bodySize} onChange={(e) => updateTypography('bodySize', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"><option value="sm">SM</option><option value="md">MD</option><option value="lg">LG</option></select></div>
+                                                </div>
+                                                {/* Custom Typography Inputs... */}
+                                                <div>
+                                                    <label className="text-[10px] text-slate-500">Dimensioni Custom (px) - <span className="text-red-500">Avanzato</span></label>
+                                                    <div className="grid grid-cols-3 gap-2 mt-1">
+                                                        <input type="number" placeholder="H1" value={generatedContent.customTypography?.h1 || ''} onChange={(e) => updateCustomTypography('h1', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-1 text-xs"/>
+                                                        <input type="number" placeholder="H2" value={generatedContent.customTypography?.h2 || ''} onChange={(e) => updateCustomTypography('h2', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-1 text-xs"/>
+                                                        <input type="number" placeholder="H3 (Features)" value={generatedContent.customTypography?.h3 || ''} onChange={(e) => updateCustomTypography('h3', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-1 text-xs"/>
+                                                        <input type="number" placeholder="Body" value={generatedContent.customTypography?.body || ''} onChange={(e) => updateCustomTypography('body', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-1 text-xs"/>
+                                                        <input type="number" placeholder="Small" value={generatedContent.customTypography?.small || ''} onChange={(e) => updateCustomTypography('small', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-1 text-xs"/>
+                                                        <input type="number" placeholder="CTA" value={generatedContent.customTypography?.cta || ''} onChange={(e) => updateCustomTypography('cta', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-1 text-xs"/>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                         {/* Advanced */}
+                                        <div className="border-t border-gray-200 pt-4">
+                                            <label className="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">11. Avanzato</label>
+                                            <div className="space-y-3">
+                                                <div><label className="text-[10px] text-slate-500">HTML Extra Body (sotto i contenuti)</label><textarea value={generatedContent.extraLandingHtml || ''} onChange={(e) => updateContentField('extraLandingHtml', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm h-24 font-mono"/></div>
+                                                <div><label className="text-[10px] text-slate-500">Script <strong className="text-red-500">HEAD</strong> (Meta Pixel, GTM, etc.)</label><textarea value={generatedContent.metaLandingHtml || ''} onChange={(e) => updateContentField('metaLandingHtml', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm h-24 font-mono"/></div>
+                                                <div><label className="text-[10px] text-slate-500">Script <strong className="text-sky-500">HEAD</strong> (TikTok Pixel, etc.)</label><textarea value={generatedContent.tiktokLandingHtml || ''} onChange={(e) => updateContentField('tiktokLandingHtml', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm h-24 font-mono"/></div>
+                                                <div><label className="text-[10px] text-slate-500">Testo Copyright Footer</label><input type="text" value={generatedContent.customFooterCopyrightText || ''} onChange={(e) => updateContentField('customFooterCopyrightText', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div>
+                                            </div>
+                                        </div>
+                                         {/* VIDEO SECTION (12) */}
+                                        <div className="border-t border-gray-200 pt-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="block text-xs font-bold text-pink-500 uppercase tracking-wide flex items-center gap-2"><Film className="w-4 h-4"/> 12. Sezione Video (TikTok/Reels)</label>
+                                                <input type="checkbox" checked={generatedContent.videoConfig?.enabled || false} onChange={e => updateVideoConfig('enabled', e.target.checked)} className="w-4 h-4 accent-pink-500"/>
+                                            </div>
+                                            {generatedContent.videoConfig?.enabled && (
+                                                <div className="space-y-3 p-3 bg-pink-50 rounded-lg border border-pink-100">
+                                                    <div>
+                                                        <label className="text-[10px] text-slate-500">Titolo Sezione</label>
+                                                        <input type="text" value={generatedContent.videoConfig?.title || ''} onChange={e => updateVideoConfig('title', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm" placeholder="Guardalo in azione!"/>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] text-slate-500">Aggiungi Video (Link MP4/CDN)</label>
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <input type="text" value={newVideoUrl} onChange={e => setNewVideoUrl(e.target.value)} className="flex-1 bg-white border border-gray-300 rounded p-2 text-sm" placeholder="https://cdn.example.com/video.mp4"/>
+                                                            <button onClick={addVideo} disabled={!newVideoUrl.trim()} className="bg-pink-500 text-white px-3 py-2 rounded text-sm font-bold hover:bg-pink-600 disabled:opacity-50">Aggiungi</button>
+                                                        </div>
+                                                        <p className="text-[9px] text-slate-400 mb-2">Nota: Inserisci solo link diretti a file video (.mp4) o CDN. I link web di TikTok/Instagram non funzionano direttamente.</p>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        {generatedContent.videoConfig?.videos?.map((v, idx) => (
+                                                            <div key={v.id} className="bg-white p-2 rounded border border-gray-200 flex items-center justify-between gap-2">
+                                                                <div className="flex items-center gap-2 overflow-hidden">
+                                                                    <div className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center text-[10px] font-bold text-slate-500">{idx + 1}</div>
+                                                                    <p className="text-xs text-slate-600 truncate flex-1">{v.url}</p>
+                                                                </div>
+                                                                <div className="flex items-center gap-1">
+                                                                    <button onClick={() => moveVideo(idx, 'up')} disabled={idx === 0} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30"><ArrowUp className="w-3 h-3"/></button>
+                                                                    <button onClick={() => moveVideo(idx, 'down')} disabled={idx === (generatedContent.videoConfig?.videos?.length || 0) - 1} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30"><ArrowDown className="w-3 h-3"/></button>
+                                                                    <button onClick={() => removeVideo(v.id)} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-3 h-3"/></button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                        {(!generatedContent.videoConfig?.videos || generatedContent.videoConfig.videos.length === 0) && (
+                                                            <p className="text-center text-xs text-slate-400 py-2">Nessun video aggiunto.</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {/* NEW: BOTTOM CTA SECTION (13) */}
+                                        <div className="border-t border-gray-200 pt-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="block text-xs font-bold text-teal-600 uppercase tracking-wide flex items-center gap-2"><Square className="w-4 h-4"/> 13. Sezione Finale CTA (Sotto Recensioni)</label>
+                                                <input type="checkbox" checked={generatedContent.bottomCtaConfig?.enabled !== false} onChange={e => updateBottomCtaConfig('enabled', e.target.checked)} className="w-4 h-4 accent-teal-600"/>
+                                            </div>
+                                            {generatedContent.bottomCtaConfig?.enabled !== false && (
+                                                <div className="space-y-3 p-3 bg-teal-50 rounded-lg border border-teal-100">
+                                                    <div>
+                                                        <label className="text-[10px] text-slate-500">Titolo Finale</label>
+                                                        <input type="text" value={generatedContent.bottomCtaConfig?.headline || ''} onChange={e => updateBottomCtaConfig('headline', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm" placeholder="Proteggi i Tuoi Piedi Oggi"/>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] text-slate-500">Sottotitolo</label>
+                                                        <textarea value={generatedContent.bottomCtaConfig?.subheadline || ''} onChange={e => updateBottomCtaConfig('subheadline', e.target.value)} className="w-full bg-white border border-gray-300 rounded p-2 text-sm h-16" placeholder="Non aspettare che sia troppo tardi..."/>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    ) : (
+                                    <div className="space-y-8 animate-in fade-in">
+                                        {/* ... TY Page Settings ... */}
+                                        <div className="border-b border-gray-200 pb-4"><label className="block text-xs font-bold text-purple-600 uppercase tracking-wide mb-2">Testo Thank You Page</label><div className="space-y-3"><div><label className="text-[10px] text-slate-500">Titolo (Usa <strong>{'{name}'}</strong> e <strong>{'{phone}'}</strong>)</label><input type="text" value={generatedThankYouContent?.headline || ''} onChange={(e) => updateContentField('headline', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div><div><label className="text-[10px] text-slate-500">Messaggio (Usa <strong>{'{name}'}</strong> e <strong>{'{phone}'}</strong>)</label><textarea value={generatedThankYouContent?.subheadline || ''} onChange={(e) => updateContentField('subheadline', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm h-20"/></div></div></div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-purple-600 uppercase tracking-wide mb-2">Design Thank You Page</label>
+                                            <div className="space-y-3">
+                                                 <div>
+                                                    <label className="text-[10px] text-slate-500">Immagine Principale</label>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-12 h-12 bg-white border rounded flex-shrink-0">
+                                                            {generatedThankYouContent?.heroImageBase64 && <img src={generatedThankYouContent.heroImageBase64} className="w-full h-full object-contain"/>}
+                                                        </div>
+                                                        <div className="flex-1 flex gap-1">
+                                                            <button onClick={() => tyImageInputRef.current?.click()} className="text-xs bg-white border border-gray-300 rounded p-1.5 w-full hover:bg-gray-50">Carica</button>
+                                                            <button onClick={() => setImagePicker({isOpen: true, type: 'thankyou', index: null})} className="text-xs bg-white border border-gray-300 rounded p-1.5 w-full hover:bg-gray-50">Galleria</button>
+                                                            <button onClick={() => updateContentField('heroImageBase64', '')} className="text-xs bg-red-50 text-red-700 border border-red-200 rounded p-1.5 hover:bg-red-100"><Trash2 className="w-3 h-3"/></button>
+                                                            <input type="file" ref={tyImageInputRef} className="hidden" onChange={(e) => handleImageUpload(e, true)} accept="image/*" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div><label className="text-[10px] text-slate-500">Colore Sfondo Pagina (Hex)</label><input type="text" value={generatedThankYouContent?.backgroundColor || '#f8fafc'} onChange={(e) => updateContentField('backgroundColor', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm"/></div>
+                                            </div>
+                                        </div>
+                                        <div className="border-t border-gray-200 pt-4">
+                                            <label className="block text-xs font-bold text-purple-600 uppercase tracking-wide mb-2">Script Thank You Page</label>
+                                            <div className="space-y-3">
+                                                <div><label className="text-[10px] text-slate-500">HTML Extra Body (sotto i contenuti)</label><textarea value={generatedThankYouContent?.extraThankYouHtml || ''} onChange={(e) => updateContentField('extraThankYouHtml', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm h-24 font-mono"/></div>
+                                                <div><label className="text-[10px] text-slate-500">Script <strong className="text-red-500">HEAD</strong> (Meta Pixel, etc.)</label><textarea value={generatedThankYouContent?.metaThankYouHtml || ''} onChange={(e) => updateContentField('metaThankYouHtml', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm h-24 font-mono"/></div>
+                                                <div><label className="text-[10px] text-slate-500">Script <strong className="text-sky-500">HEAD</strong> (TikTok Pixel, etc.)</label><textarea value={generatedThankYouContent?.tiktokThankYouHtml || ''} onChange={(e) => updateContentField('tiktokThankYouHtml', e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded p-2 text-sm h-24 font-mono"/></div>
+                                            </div>
+                                        </div>
+                                    </div>
                                     )}
                                 </div>
                             </div>
                         )}
                     </div>
-                    {/* ... (Preview Section) ... */}
+                    {/* ... (Existing Right Column Logic) ... */}
                     <div className="lg:col-span-7 xl:col-span-8">
-                        {generatedContent ? (
-                            <div className="sticky top-24">
-                                {/* ... (Preview Controls) ... */}
-                                <div className="flex items-center justify-between mb-4"><div className="flex items-center p-1 bg-gray-200 rounded-lg border border-gray-300"><button onClick={() => setPreviewDevice('mobile')} className={`p-2 rounded ${previewDevice==='mobile'?'bg-white shadow':'hover:bg-gray-100'}`}><Smartphone className="w-4 h-4 text-slate-600"/></button><button onClick={() => setPreviewDevice('tablet')} className={`p-2 rounded ${previewDevice==='tablet'?'bg-white shadow':'hover:bg-gray-100'}`}><Tablet className="w-4 h-4 text-slate-600"/></button><button onClick={() => setPreviewDevice('desktop')} className={`p-2 rounded ${previewDevice==='desktop'?'bg-white shadow':'hover:bg-gray-100'}`}><Monitor className="w-4 h-4 text-slate-600"/></button></div><div className="flex items-center gap-2"><button onClick={handleDiscard} className="px-4 py-2 text-sm font-bold text-slate-500 hover:bg-gray-200 rounded-lg">Annulla</button><button onClick={handleSaveToDb} disabled={isSaving} className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-md transition-transform active:scale-95 flex items-center gap-2 disabled:opacity-50">{isSaving?<Loader2 className="w-4 h-4 animate-spin"/>:<Save className="w-4 h-4"/>} {editingPageId ? 'Aggiorna' : 'Pubblica'}</button></div></div>
-                                <div className={`mx-auto bg-gray-800 rounded-2xl shadow-2xl p-2 transition-all duration-300 ${previewDevice === 'mobile' ? 'w-[375px]' : previewDevice === 'tablet' ? 'w-[768px]' : 'w-full'}`}>
-                                    <div className="w-full h-[75vh] bg-white rounded-lg overflow-y-auto scrollbar-thin scrollbar-thumb-emerald-600">
-                                        {previewMode === 'landing' && generatedContent && (
-                                            <LandingPage 
-                                                content={generatedContent}
-                                                onRedirect={(data) => { 
-                                                    setPreviewMode('thankyou');
-                                                    setOrderData(data);
-                                                }}
-                                            />
-                                        )}
-                                        {previewMode === 'thankyou' && generatedThankYouContent && (
-                                            <ThankYouPage content={generatedThankYouContent} initialData={orderData} />
+                        {!generatedContent ? (
+                           <div className="h-full">
+                               <div className="flex justify-between items-center mb-6">
+                                   <h2 className="text-2xl font-bold text-slate-900">Pagine Esistenti</h2>
+                                   <div className="flex items-center gap-2">
+                                       <button onClick={fetchAllAdminPages} className="p-2 hover:bg-gray-200 rounded-lg text-slate-500 transition"><RefreshCcw className="w-4 h-4"/></button>
+                                   </div>
+                               </div>
+                               {isLoadingPages ? (<div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 animate-spin text-emerald-500"/></div>) : (
+                                   adminPages.length > 0 ? (
+                                       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                           {adminPages.map(page => <PageCard key={page.id} page={page} onView={handleViewPage} onEdit={handleEditPage} onDuplicate={handleOpenDuplicate} onDelete={handleDeletePage} />)}
+                                       </div>
+                                   ) : (<div className="text-center p-12 bg-white rounded-2xl border border-dashed border-gray-300"><p className="text-slate-500">Nessuna pagina trovata. Creane una!</p></div>)
+                               )}
+                               {duplicationTarget && (
+                                   <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                                       <div className="absolute inset-0 bg-black/60" onClick={() => setDuplicationTarget(null)}></div>
+                                       <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg p-8 animate-in zoom-in-95 duration-200">
+                                            <h3 className="text-xl font-bold mb-2">Duplica & Traduci</h3>
+                                            <p className="text-sm text-slate-500 mb-6">Crea una copia o traduci la pagina <span className="font-bold">{duplicationTarget.product_name}</span>.</p>
+                                            <div className="space-y-4">
+                                                <div><label className="block text-xs font-medium text-slate-500 mb-1">Nuovo Nome</label><input type="text" value={duplicationName} onChange={e => setDuplicationName(e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded-lg p-3 text-sm" /></div>
+                                                <div><label className="block text-xs font-medium text-slate-500 mb-1">Lingua di Destinazione</label><select value={duplicationLang} onChange={e => setDuplicationLang(e.target.value)} className="w-full bg-gray-50 border border-gray-300 rounded-lg p-3 text-sm">{SUPPORTED_LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}</select></div>
+                                            </div>
+                                            <div className="flex justify-end gap-3 mt-8">
+                                                <button onClick={() => setDuplicationTarget(null)} className="py-2 px-5 text-sm font-bold text-slate-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">Annulla</button>
+                                                <button onClick={handleProcessDuplication} disabled={isDuplicating} className="py-2 px-5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition flex items-center gap-2 disabled:opacity-50">{isDuplicating ? <Loader2 className="w-4 h-4 animate-spin"/> : <Copy className="w-4 h-4"/>} Prosegui</button>
+                                            </div>
+                                       </div>
+                                   </div>
+                               )}
+                           </div>
+                        ) : (
+                            <div className="bg-gray-800 rounded-2xl shadow-2xl overflow-hidden h-fit sticky top-24 animate-in fade-in zoom-in-95 duration-300">
+                                <div className="p-3 bg-gray-900 flex justify-between items-center border-b border-gray-700">
+                                    <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-red-500"></div><div className="w-2.5 h-2.5 rounded-full bg-yellow-500"></div><div className="w-2.5 h-2.5 rounded-full bg-green-500"></div></div>
+                                    <div className="flex items-center gap-1 bg-gray-700 p-1 rounded-lg">
+                                        <button onClick={() => setPreviewDevice('mobile')} className={`p-1.5 rounded-md transition ${previewDevice === 'mobile' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}><Smartphone className="w-4 h-4"/></button>
+                                        <button onClick={() => setPreviewDevice('tablet')} className={`p-1.5 rounded-md transition ${previewDevice === 'tablet' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}><Tablet className="w-4 h-4"/></button>
+                                        <button onClick={() => setPreviewDevice('desktop')} className={`p-1.5 rounded-md transition ${previewDevice === 'desktop' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}><Monitor className="w-4 h-4"/></button>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={handleSaveToDb} disabled={isSaving} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50">{isSaving ? <Loader2 className="w-3 h-3 animate-spin"/> : <Save className="w-3 h-3"/>} {editingPageId ? "Aggiorna" : "Pubblica"}</button>
+                                    </div>
+                                </div>
+                                <div className={`mx-auto transition-all duration-300 ease-in-out ${previewDevice === 'mobile' ? 'w-[375px]' : previewDevice === 'tablet' ? 'w-[768px]' : 'w-full'}`}>
+                                    <div className="w-full h-[75vh] bg-white overflow-y-auto scrollbar-thin scrollbar-thumb-gray-400">
+                                        {previewMode === 'landing' ? (
+                                            <LandingPage content={generatedContent} onRedirect={(data) => { setOrderData(data); setPreviewMode('thankyou'); }} />
+                                        ) : (
+                                            generatedThankYouContent && <ThankYouPage content={generatedThankYouContent} initialData={orderData} />
                                         )}
                                     </div>
                                 </div>
-                            </div>
-                        ) : (
-                            <div>
-                                <div className="flex items-center justify-between mb-4">
-                                    <h2 className="text-xl font-bold text-slate-900">Pagine Esistenti</h2>
-                                    <button onClick={fetchAllAdminPages} className="p-2 hover:bg-gray-200 rounded-lg text-slate-500 transition" title="Aggiorna lista"><RefreshCcw className="w-4 h-4"/></button>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                                    {isLoadingPages ? (<div className="col-span-full flex items-center justify-center p-10"><Loader2 className="w-8 h-8 animate-spin text-emerald-500" /></div>) : adminPages.length === 0 ? (<p className="col-span-full text-slate-500">Nessuna pagina trovata. Creane una nuova!</p>) : (adminPages.map(page => (<PageCard key={page.id} page={page} onView={(p) => { setPreviewMode('landing'); setSelectedPublicPage(p); setView('preview'); }} onEdit={handleEditPage} onDuplicate={handleOpenDuplicate} onDelete={handleDeletePage} />)))}
-                                </div>
-                                {duplicationTarget && (
-                                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                                      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDuplicationTarget(null)}></div>
-                                      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-8 animate-in zoom-in-95 duration-200">
-                                          <h3 className="text-xl font-bold mb-2">Duplica & Traduci Pagina</h3>
-                                          <p className="text-sm text-slate-600 mb-6">Crea una copia esatta o traduci in un'altra lingua.</p>
-                                          <div className="space-y-4">
-                                            <div><label className="text-xs font-bold text-slate-500">Nuovo Nome Prodotto</label><input type="text" value={duplicationName} onChange={(e) => setDuplicationName(e.target.value)} className="w-full bg-gray-100 border border-gray-300 rounded-lg p-2 text-sm mt-1"/></div>
-                                            <div><label className="text-xs font-bold text-slate-500">Lingua di Destinazione</label><select value={duplicationLang} onChange={(e) => setDuplicationLang(e.target.value)} className="w-full bg-gray-100 border border-gray-300 rounded-lg p-2 text-sm mt-1">{SUPPORTED_LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}</select></div>
-                                          </div>
-                                          <div className="flex justify-end gap-3 mt-8">
-                                            <button onClick={() => setDuplicationTarget(null)} className="px-4 py-2 text-sm font-bold text-slate-500 hover:bg-gray-100 rounded-lg">Annulla</button>
-                                            <button onClick={handleProcessDuplication} disabled={isDuplicating} className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-md transition flex items-center gap-2 disabled:opacity-50">
-                                                {isDuplicating ? <Loader2 className="w-4 h-4 animate-spin"/> : <Copy className="w-4 h-4"/>} {duplicationLang !== duplicationTarget.content.language ? 'Traduci' : 'Duplica'}
-                                            </button>
-                                          </div>
-                                      </div>
-                                  </div>
-                                )}
                             </div>
                         )}
                     </div>
@@ -1812,48 +1921,73 @@ export const App: React.FC = () => {
     );
   }
 
-  if (view === 'preview' && selectedPublicPage) {
-    return (
-        <div className="relative">
-            <div className="fixed top-3 left-3 z-[100]">
-                <button onClick={() => { setView('admin'); setSelectedPublicPage(null); }} className="bg-white/80 backdrop-blur-md text-slate-800 px-4 py-2 rounded-full shadow-sm border border-slate-200/50 hover:bg-white hover:shadow-md transition-all flex items-center gap-2 group"><ChevronLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" /> <span className="font-bold text-sm">Torna all'Admin</span></button>
-            </div>
-            <LandingPage content={selectedPublicPage.content} />
-        </div>
-    );
-  }
-
-  // Fallback a home/sito pubblico
+  // HOME VIEW (Default)
   return (
-    <div className="min-h-screen bg-gray-100">
-        <header className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-200">
-            <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-                <div onClick={handleStealthClick} className="font-black text-2xl text-emerald-600 tracking-tighter cursor-pointer"> {siteConfig.siteName} </div>
+    <div className="min-h-screen bg-white text-slate-800">
+      <header className="border-b border-slate-200">
+        <div className="container mx-auto px-6 py-4 flex justify-between items-center">
+            <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-lg flex items-center justify-center shadow-lg"><Sparkles className="w-6 h-6 text-white"/></div>
+                <h1 className="text-xl font-bold text-slate-900" onClick={handleStealthClick}>{siteConfig.siteName}</h1>
             </div>
-        </header>
-        <main className="container mx-auto px-6 py-12">
-            {isLoadingPages ? (<div className="flex items-center justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-emerald-500"/></div>) : publicPages.length === 0 ? (<div className="text-center py-20"><h2 className="text-2xl font-bold text-slate-700">Nessuna offerta disponibile.</h2><p className="text-slate-500 mt-2">Torna a trovarci presto!</p></div>) : (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">{publicPages.map(page => (<PageCard key={page.id} page={page} onView={(p) => { const newUrl = `${window.location.pathname}?s=${p.slug}`; window.history.pushState({}, '', newUrl); handleViewPage(p); updateUserPresence(newUrl); }}/>))}</div>)}
-        </main>
-        <footer className="bg-gray-200 text-center py-6 mt-12">
-            <div className="container mx-auto text-sm text-gray-500"> {siteConfig.footerText} </div>
-        </footer>
-
-        {isLoginOpen && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsLoginOpen(false)}></div>
-                <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8 animate-in zoom-in-95 duration-200">
-                    <div className="text-center mb-6"><h2 className="text-2xl font-bold text-slate-900">{isRegistering ? 'Registra Account' : 'Accesso Admin'}</h2><p className="text-sm text-slate-500 mt-1">{isRegistering ? 'Crea un nuovo account per iniziare.' : 'Inserisci le tue credenziali.'}</p></div>
-                    <form onSubmit={handleAuth} className="space-y-4">
-                        <div><label className="block text-xs font-medium text-slate-600 mb-1">Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-gray-100 border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" required/></div>
-                        <div><label className="block text-xs font-medium text-slate-600 mb-1">Password</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-100 border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" required/></div>
-                        {authError && <p className="text-xs text-center text-red-600 bg-red-50 p-2 rounded-md">{authError}</p>}
-                        {authSuccess && <p className="text-xs text-center text-green-600 bg-green-50 p-2 rounded-md">{authSuccess}</p>}
-                        <button type="submit" disabled={loading} className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-md transition-transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50">{loading ? <Loader2 className="w-5 h-5 animate-spin"/> : (isRegistering ? 'Registrati' : 'Accedi')}</button>
-                    </form>
-                    <div className="text-center mt-4"><button onClick={() => setIsRegistering(!isRegistering)} className="text-xs text-slate-500 hover:text-emerald-600 hover:underline font-medium">{isRegistering ? 'Hai già un account? Accedi' : 'Non hai un account? Registrati'}</button></div>
+        </div>
+      </header>
+      <main className="container mx-auto px-6 py-12">
+        <div className="text-center max-w-4xl mx-auto mb-16">
+            <div className="relative w-full aspect-video rounded-2xl overflow-hidden shadow-2xl mb-10 border border-slate-200 bg-black">
+                <video 
+                    className="w-full h-full object-cover"
+                    src="https://res.cloudinary.com/db1qkdntm/video/upload/v1765727527/site-businessman-working-with-virtual-reality-at-o-2025-12-09-06-42-01-utc_bnkst2.webm"
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                />
+            </div>
+            <h2 className="text-4xl md:text-6xl font-extrabold text-slate-900 mb-6 leading-tight">
+              Da Oltre 30 Anni <br className="hidden md:block" />
+              <span className="text-emerald-600">Leader nel Risparmio e Qualità</span>
+            </h2>
+            <p className="text-lg md:text-xl text-slate-600 leading-relaxed max-w-2xl mx-auto">
+              Non affidarti al caso. Scegli l'esperienza di chi seleziona per te solo il meglio da tre decenni. 
+              Prodotti esclusivi, <strong>pagamento sicuro alla consegna</strong> e la tranquillità di acquistare da veri professionisti. 
+              La tua soddisfazione è la nostra storia.
+            </p>
+        </div>
+        {isLoadingPages ? (
+             <div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 animate-spin text-emerald-500"/></div>
+        ) : (
+            publicPages.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                    {publicPages.map(page => <PageCard key={page.id} page={page} onView={handleViewPage} />)}
                 </div>
-            </div>
+            ) : (<div className="text-center p-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200"><p className="text-slate-500">Nessuna offerta disponibile al momento. Torna a trovarci presto!</p></div>)
         )}
+      </main>
+      <footer className="bg-slate-50 border-t border-slate-200 mt-20">
+        <div className="container mx-auto px-6 py-6 text-center text-slate-500 text-sm">{siteConfig.footerText}</div>
+      </footer>
+      {isLoginOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsLoginOpen(false)}></div>
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8 animate-in zoom-in-95 duration-200">
+                <div className="text-center mb-6">
+                    <h3 className="text-2xl font-bold text-slate-900">{isRegistering ? 'Crea Account' : 'Accesso Admin'}</h3>
+                    <p className="text-sm text-slate-500">{isRegistering ? 'Inserisci i tuoi dati per registrarti' : 'Inserisci le credenziali per accedere'}</p>
+                </div>
+                <form onSubmit={handleAuth} className="space-y-4">
+                    <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full p-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"/>
+                    <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full p-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"/>
+                    {authError && <p className="text-xs text-red-500 bg-red-50 p-2 rounded-md">{authError}</p>}
+                    {authSuccess && <p className="text-xs text-green-600 bg-green-50 p-2 rounded-md">{authSuccess}</p>}
+                    <button type="submit" disabled={loading} className="w-full py-3 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition disabled:opacity-50 flex items-center justify-center gap-2">{loading ? <Loader2 className="w-5 h-5 animate-spin"/> : (isRegistering ? 'Registrati' : 'Accedi')}</button>
+                </form>
+                <p className="text-center text-xs text-slate-500 mt-4">
+                    {isRegistering ? 'Hai già un account?' : 'Non hai un account?'} <button onClick={() => { setIsRegistering(!isRegistering); setAuthError(''); setAuthSuccess(''); }} className="font-bold text-emerald-600 hover:underline">{isRegistering ? 'Accedi' : 'Registrati'}</button>
+                </p>
+            </div>
+        </div>
+      )}
     </div>
   );
 };

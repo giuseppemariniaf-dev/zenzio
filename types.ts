@@ -228,7 +228,7 @@ export interface GeneratedContent {
   metaLandingHtml?: string;     // HTML for Meta on Landing Page
   tiktokLandingHtml?: string;   // HTML for TikTok on Landing Page
   metaThankYouHtml?: string;    // HTML for Meta on Thank You Page
-  tiktokThankYouHtml?: string;  // HTML for TikTok on Landing Page
+  tiktokThankYouHtml?: string;  // HTML for TikTok on Thank You Page
   
   // Legacy/Generic (kept for backward compatibility or extra scripts)
   customHeadHtml?: string; 
@@ -269,14 +269,4 @@ export interface LandingPageRow {
   // New columns for scripts
   custom_head_html?: string;
   custom_thankyou_html?: string;
-}
-
-export interface Order {
-  id: number;
-  created_at: string;
-  product_name: string;
-  total_price: string;
-  form_data: Record<string, string>;
-  customer_name?: string;
-  customer_phone?: string;
 }

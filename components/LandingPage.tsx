@@ -1,13 +1,7 @@
 
 
-
-
-
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { GeneratedContent, TemplateId, FormFieldConfig, TypographyConfig, Testimonial } from '../types';
-import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { CheckCircle, Star, ShoppingCart, ArrowRight, ShieldCheck, Clock, Menu, User, CheckSquare, Truck, MessageCircle, X, Phone, MapPin, FileText, Loader2, Mail, Home, Image as ImageIcon, CreditCard, Banknote, ChevronDown, Zap, RefreshCcw, Check, Lock, Package, Eye, ThumbsUp, Flame, AlertTriangle, ShoppingBag, Bell, Maximize2, Gift, Play, Award, Timer } from 'lucide-react';
 
 export interface OrderData {
@@ -702,28 +696,6 @@ const OrderPopup: React.FC<{ isOpen: boolean; onClose: () => void; content: Gene
             }
         }
 
-        // --- NEW: Save order to Supabase ---
-        const orderPayload = {
-            product_name: content.headline || 'Unknown Product',
-            total_price: `${totalPrice} ${currency}`,
-            form_data: formData,
-            customer_name: formData.name,
-            customer_phone: formData.phone
-        };
-
-        if (isSupabaseConfigured() && supabase) {
-            try {
-                const { error } = await supabase.from('orders').insert([orderPayload]);
-                if (error) {
-                   console.error("Failed to save order to DB:", error);
-                   // Non-blocking error, webhook is primary
-                }
-            } catch (dbError) {
-                console.error("Exception while saving order to DB:", dbError);
-            }
-        }
-        // --- END NEW ---
-
         trackEvent('Lead', { content_id: contentId }, { email: formData.email, phone: formData.phone });
         trackEvent('Contact', {}, { email: formData.email, phone: formData.phone });
         
@@ -770,15 +742,11 @@ const OrderPopup: React.FC<{ isOpen: boolean; onClose: () => void; content: Gene
             setIsLoading(false);
             setShowCardErrorModal(true);
         } else {
-            await finalizeOrder('cod');
+            finalizeOrder('cod');
         }
     };
 
-    const handleSwitchToCod = async () => { 
-        setPaymentMethod('cod'); 
-        setShowCardErrorModal(false); 
-        await finalizeOrder('cod'); 
-    };
+    const handleSwitchToCod = () => { setPaymentMethod('cod'); setShowCardErrorModal(false); finalizeOrder('cod'); };
     const handleGiveUp = () => { setShowCardErrorModal(false); onClose(); };
 
     const PriceDisplay = ({ p, op }: { p: string, op?: string }) => (
@@ -1269,7 +1237,6 @@ const GadgetTemplate: React.FC<TemplateProps> = ({ content, onBuy, styles }) => 
                             </button>
                             <div className="flex justify-center gap-3 mt-3 text-[10px] text-slate-400 font-bold w-full" style={smallStyle}>
                                 <span className="flex items-center gap-1"><Lock className="w-3 h-3" /> {labels.secure}</span>
-                                {/* FIX: Changed RefreshCc to RefreshCcw */}
                                 <span className="flex items-center gap-1"><RefreshCcw className="w-3 h-3" /> {labels.returns}</span>
                             </div>
                         </div>

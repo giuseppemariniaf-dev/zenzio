@@ -19,8 +19,7 @@ export const isSupabaseConfigured = (): boolean => {
   return !!supabase;
 };
 
-// FIX: The previous implementation returned an ArrayBuffer to avoid potential Blob type conflicts,
-// but that caused type errors with the Supabase upload method. This has been reverted to return a proper Blob.
+// Helper function to convert Base64 to Blob
 export const base64ToBlob = (base64: string): Blob | null => {
   try {
     const arr = base64.split(',');
@@ -38,7 +37,7 @@ export const base64ToBlob = (base64: string): Blob | null => {
     
     return new Blob([u8arr], { type: mime });
   } catch (e) {
-    console.error("Error converting base64 to Blob", e);
+    console.error("Error converting base64 to blob", e);
     return null;
   }
 };
