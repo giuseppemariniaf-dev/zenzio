@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase, isSupabaseConfigured, base64ToBlob } from './services/supabaseClient';
 import { generateLandingPage, generateReviews, generateActionImages, translateLandingPage, getLanguageConfig } from './services/geminiService';
@@ -1022,9 +1023,11 @@ export const App: React.FC = () => {
           const blob = base64ToBlob(imageString); 
           if (!blob) return imageString; 
           const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
-// FIX: The previous attempt to convert the blob to an ArrayBuffer was causing a type error.
-// Passing the blob object directly to the upload method is supported and resolves the issue.
-          const { data, error } = await supabase.storage.from('landing-images').upload(fileName, blob, { contentType: blob.type || 'image/png', upsert: false }); 
+          // FIX: The upload method was failing due to a type error with the Blob object.
+          // Converting the blob to an ArrayBuffer before uploading is a more robust approach.
+          // The `await` is crucial because `blob.arrayBuffer()` returns a Promise.
+          const buffer = await blob.arrayBuffer();
+          const { data, error } = await supabase.storage.from('landing-images').upload(fileName, buffer, { contentType: blob.type || 'image/png', upsert: false }); 
           if (error) { 
               console.error("Upload error:", error); 
               return imageString; 
@@ -1332,14 +1335,25 @@ export const App: React.FC = () => {
   };
 
   const handleViewPage = (page: LandingPageRow) => {
-      setSelectedPublicPage(page);
-      if (page.thank_you_slug && window.location.search.includes(page.thank_you_slug)) {
-          setView('thank_you_view');
-      } else {
-          setView('product_view');
-      }
-      window.scrollTo(0,0);
-  };
+    // Set the state to show the correct page content
+    setSelectedPublicPage(page);
+    setView('product_view');
+    window.scrollTo(0, 0);
+
+    // Manually update the browser's URL without reloading the page
+    const newUrl = new URL(window.location.href);
+    newUrl.search = ''; // Clear existing search params
+    if (page.slug) {
+        newUrl.searchParams.set('s', page.slug);
+    } else {
+        newUrl.searchParams.set('p', page.id);
+    }
+    // Use pushState to change the URL and add to history
+    window.history.pushState({}, '', newUrl);
+
+    // Update user presence with the new, correct URL
+    updateUserPresence(newUrl.pathname + newUrl.search);
+};
 
   const handleDeletePage = async (id: string) => {
       if (!confirm("Sei sicuro di voler eliminare questa pagina?")) return;
